@@ -10,6 +10,13 @@ export interface ContractInfo {
   state: number;
 }
 
+export interface TickerInfo {
+  symbol: string;
+  amount24: number;
+  volume24: number;
+  lastPrice: number;
+}
+
 /** Parse MEXC kline response `{ data: { time:[], open:[], high:[], low:[], close:[], vol:[] } }` into candles. */
 export function parseKlines(json: any): Candle[] {
   const d = json?.data;
@@ -35,6 +42,15 @@ export function parseContracts(json: any): ContractInfo[] {
   return arr
     .filter((c: any) => c && c.quoteCoin === 'USDT' && String(c.symbol).endsWith('_USDT') && c.state === 0)
     .map((c: any) => ({ symbol: c.symbol, baseCoin: c.baseCoin, quoteCoin: c.quoteCoin, priceUnit: Number(c.priceUnit) || 0, state: c.state }));
+}
+
+export function parseTopVolumeTickers(json: any, limit = 50): string[] {
+  const arr: any[] = Array.isArray(json?.data) ? json.data : [];
+  return arr
+    .filter(t => t && typeof t.symbol === 'string' && t.symbol.endsWith('_USDT') && Number(t.amount24) > 0)
+    .sort((a, b) => Number(b.amount24) - Number(a.amount24))
+    .slice(0, limit)
+    .map(t => String(t.symbol));
 }
 
 /** Simple serial rate limiter: at most `max` requests per `windowMs`. */
@@ -74,4 +90,8 @@ export async function fetchKlines(symbol: string, interval = 'Min1', bars = 1500
 
 export async function fetchContracts(): Promise<ContractInfo[]> {
   return parseContracts(await getJson('/api/v1/contract/detail'));
+}
+
+export async function fetchTopVolumePerps(limit = 50): Promise<string[]> {
+  return parseTopVolumeTickers(await getJson('/api/v1/contract/ticker'), limit);
 }

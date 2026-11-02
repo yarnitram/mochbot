@@ -9,6 +9,7 @@ export interface WatchRow {
   killzone: number | null; // null = use global
   sensitivity: string | null;
   watch_distance: number | null;
+  is_auto: number; // 0 = manual/pinned, 1 = auto-scanned
   added_at: number;
 }
 
@@ -21,6 +22,32 @@ export interface AlertRow {
   setup_id: string | null;
   delivered: number;
   payload: string;
+}
+
+export type TradeStatus = 'OPEN' | 'TP1_HIT' | 'CLOSED_TP2' | 'CLOSED_SL' | 'CLOSED_BE';
+
+export interface TradeRow {
+  id: number;
+  symbol: string;
+  direction: string;
+  entry_price: number;
+  sl_price: number;
+  tp1_price: number;
+  tp2_price: number;
+  status: TradeStatus;
+  opened_at: number;
+  closed_at: number | null;
+  pnl_r: number | null;
+  setup_id: string | null;
+}
+
+export interface PerformanceSummary {
+  totalTrades: number;
+  openTrades: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  totalR: number;
 }
 
 // loaded via require so bundlers/test runners that do not know node:sqlite do not choke on it
@@ -39,6 +66,7 @@ export class Db {
         killzone INTEGER,
         sensitivity TEXT,
         watch_distance REAL,
+        is_auto INTEGER NOT NULL DEFAULT 0,
         added_at INTEGER NOT NULL
       );
       CREATE TABLE IF NOT EXISTS alerts (
@@ -53,19 +81,67 @@ export class Db {
       );
       CREATE INDEX IF NOT EXISTS alerts_ts ON alerts(ts DESC);
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
+      CREATE TABLE IF NOT EXISTS trades (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        symbol TEXT NOT NULL,
+        direction TEXT NOT NULL,
+        entry_price REAL NOT NULL,
+        sl_price REAL NOT NULL,
+        tp1_price REAL NOT NULL,
+        tp2_price REAL NOT NULL,
+        status TEXT NOT NULL,
+        opened_at INTEGER NOT NULL,
+        closed_at INTEGER,
+        pnl_r REAL,
+        setup_id TEXT UNIQUE
+      );
+      CREATE INDEX IF NOT EXISTS trades_status ON trades(status);
     `);
+
+    // Safe migration for existing databases missing is_auto column
+    try {
+      this.db.exec(`ALTER TABLE watchlist ADD COLUMN is_auto INTEGER NOT NULL DEFAULT 0;`);
+    } catch {
+      // column already exists
+    }
   }
 
+  // ---------- Watchlist ----------
   listWatch(): WatchRow[] {
-    return this.db.prepare('SELECT * FROM watchlist ORDER BY symbol').all() as unknown as WatchRow[];
+    return this.db.prepare('SELECT symbol, killzone, sensitivity, watch_distance, COALESCE(is_auto, 0) as is_auto, added_at FROM watchlist ORDER BY is_auto ASC, symbol ASC').all() as unknown as WatchRow[];
   }
-  addWatch(symbol: string): boolean {
-    const r = this.db.prepare('INSERT OR IGNORE INTO watchlist(symbol, added_at) VALUES (?, ?)').run(symbol, Math.floor(Date.now() / 1000));
+
+  addWatch(symbol: string, isAuto = false): boolean {
+    const existing = this.db.prepare('SELECT symbol, is_auto FROM watchlist WHERE symbol = ?').get(symbol) as { symbol: string; is_auto: number } | undefined;
+    if (existing) {
+      // If user manually adds an auto-scanned symbol, promote it to manual (pinned)
+      if (!isAuto && existing.is_auto === 1) {
+        this.db.prepare('UPDATE watchlist SET is_auto = 0 WHERE symbol = ?').run(symbol);
+        return true;
+      }
+      return false;
+    }
+    const r = this.db.prepare('INSERT INTO watchlist(symbol, is_auto, added_at) VALUES (?, ?, ?)').run(symbol, isAuto ? 1 : 0, Math.floor(Date.now() / 1000));
     return Number(r.changes) > 0;
   }
+
   removeWatch(symbol: string): boolean {
     return Number(this.db.prepare('DELETE FROM watchlist WHERE symbol = ?').run(symbol).changes) > 0;
   }
+
+  removeAutoWatchesExcept(keepSymbols: Set<string>): string[] {
+    const all = this.listWatch().filter(w => w.is_auto === 1);
+    const toRemove: string[] = [];
+    for (const w of all) {
+      if (!keepSymbols.has(w.symbol)) {
+        this.removeWatch(w.symbol);
+        toRemove.push(w.symbol);
+      }
+    }
+    return toRemove;
+  }
+
   updateWatch(symbol: string, patch: { killzone?: boolean | null; sensitivity?: string | null; watch_distance?: number | null }): boolean {
     const cur = this.db.prepare('SELECT * FROM watchlist WHERE symbol = ?').get(symbol) as unknown as WatchRow | undefined;
     if (!cur) return false;
@@ -76,6 +152,7 @@ export class Db {
     return true;
   }
 
+  // ---------- Settings ----------
   getSetting(key: string): string | null {
     const r = this.db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
     return r ? r.value : null;
@@ -84,6 +161,7 @@ export class Db {
     this.db.prepare('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key, value);
   }
 
+  // ---------- Alerts ----------
   insertAlert(setup: Setup, delivered: boolean): number {
     const r = this.db
       .prepare('INSERT INTO alerts(ts, symbol, stage, direction, setup_id, delivered, payload) VALUES (?,?,?,?,?,?,?)')
@@ -98,6 +176,77 @@ export class Db {
   }
   alertsSince(tsSec: number): AlertRow[] {
     return this.db.prepare('SELECT * FROM alerts WHERE ts >= ? ORDER BY id').all(tsSec) as unknown as AlertRow[];
+  }
+
+  // ---------- Trade Lifecycle & Performance ----------
+  createTrade(trade: {
+    symbol: string;
+    direction: string;
+    entry_price: number;
+    sl_price: number;
+    tp1_price: number;
+    tp2_price: number;
+    setup_id?: string | null;
+    opened_at?: number;
+  }): number {
+    const now = trade.opened_at ?? Math.floor(Date.now() / 1000);
+    const r = this.db
+      .prepare(`INSERT INTO trades (symbol, direction, entry_price, sl_price, tp1_price, tp2_price, status, opened_at, setup_id)
+                VALUES (?, ?, ?, ?, ?, ?, 'OPEN', ?, ?)`)
+      .run(trade.symbol, trade.direction, trade.entry_price, trade.sl_price, trade.tp1_price, trade.tp2_price, now, trade.setup_id ?? null);
+    return Number(r.lastInsertRowid);
+  }
+
+  updateTradeStatus(id: number, status: TradeStatus, pnlR?: number, closedAt?: number): void {
+    const closed = closedAt ?? Math.floor(Date.now() / 1000);
+    if (pnlR !== undefined) {
+      this.db.prepare('UPDATE trades SET status = ?, pnl_r = ?, closed_at = ? WHERE id = ?').run(status, pnlR, closed, id);
+    } else {
+      this.db.prepare('UPDATE trades SET status = ? WHERE id = ?').run(status, id);
+    }
+  }
+
+  updateTradeSl(id: number, slPrice: number): void {
+    this.db.prepare('UPDATE trades SET sl_price = ? WHERE id = ?').run(slPrice, id);
+  }
+
+  getActiveTrades(): TradeRow[] {
+    return this.db.prepare("SELECT * FROM trades WHERE status IN ('OPEN', 'TP1_HIT') ORDER BY opened_at DESC").all() as unknown as TradeRow[];
+  }
+
+  getTradeHistory(limit = 50): TradeRow[] {
+    return this.db.prepare('SELECT * FROM trades ORDER BY id DESC LIMIT ?').all(limit) as unknown as TradeRow[];
+  }
+
+  getPerformanceSummary(): PerformanceSummary {
+    const rows = this.db.prepare('SELECT status, pnl_r FROM trades').all() as unknown as { status: TradeStatus; pnl_r: number | null }[];
+    let openTrades = 0;
+    let wins = 0;
+    let losses = 0;
+    let totalR = 0;
+
+    for (const r of rows) {
+      if (r.status === 'OPEN' || r.status === 'TP1_HIT') {
+        openTrades++;
+      } else {
+        const pnl = r.pnl_r ?? 0;
+        totalR += pnl;
+        if (pnl > 0) wins++;
+        else losses++;
+      }
+    }
+
+    const totalClosed = wins + losses;
+    const winRate = totalClosed > 0 ? (wins / totalClosed) * 100 : 0;
+
+    return {
+      totalTrades: rows.length,
+      openTrades,
+      wins,
+      losses,
+      winRate: Number(winRate.toFixed(1)),
+      totalR: Number(totalR.toFixed(2)),
+    };
   }
 
   close() {

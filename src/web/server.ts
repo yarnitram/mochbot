@@ -44,12 +44,25 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
   };
   runner.on('state', d => push('state', d));
   runner.on('alert', d => push('alert', d));
+  runner.on('milestone', d => push('milestone', d));
+  runner.lifecycle.on('trade_opened', d => push('trade_opened', d));
+  runner.on('watchlist_updated', () => push('state_full', snapshot()));
 
   const snapshot = () => ({
     mode: cfg.paperMode ? 'paper' : 'live',
     killzone: runner.killzoneGlobal,
     muted: runner.muted,
+    autoScanner: runner.autoScannerEnabled,
     channels: { telegram: !!cfg.telegramToken, discord: !!cfg.discordWebhook },
+    performance: db.getPerformanceSummary(),
+    activeTrades: db.getActiveTrades().map(t => {
+      const state = runner.states.get(t.symbol);
+      const currentPrice = state?.price ?? t.entry_price;
+      const isLong = t.direction === 'LONG';
+      const risk = Math.abs(t.entry_price - t.sl_price) || 1;
+      const currentR = isLong ? (currentPrice - t.entry_price) / risk : (t.entry_price - currentPrice) / risk;
+      return { ...t, currentPrice, currentR: Number(currentR.toFixed(2)) };
+    }),
     watchlist: db.listWatch().map(w => ({ ...w, state: runner.states.get(w.symbol) ?? null })),
   });
 
@@ -65,6 +78,13 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
       if (path === '/api/state' && req.method === 'GET') return json(res, 200, snapshot());
       if (path === '/api/alerts' && req.method === 'GET') {
         return json(res, 200, db.recentAlerts(100).map(a => ({ ...a, payload: JSON.parse(a.payload) })));
+      }
+      if (path === '/api/trades' && req.method === 'GET') {
+        return json(res, 200, {
+          active: db.getActiveTrades(),
+          history: db.getTradeHistory(50),
+          performance: db.getPerformanceSummary(),
+        });
       }
       if (path === '/api/symbols' && req.method === 'GET') {
         const q = (url.searchParams.get('q') ?? '').toUpperCase();
@@ -93,6 +113,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
         const b = await readBody(req);
         if (typeof b.killzone === 'boolean') runner.setKillzone(b.killzone);
         if (typeof b.muted === 'boolean') runner.setMuted(b.muted);
+        if (typeof b.auto_scanner === 'boolean') runner.setAutoScanner(b.auto_scanner);
         return json(res, 200, snapshot());
       }
       if (path === '/api/events') {
