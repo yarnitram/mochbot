@@ -56,7 +56,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
   const server = createServer(async (req, res) => {
     try {
       if (!authOk(req, cfg.dashboardPassword)) {
-        res.writeHead(401, { 'www-authenticate': 'Basic realm="Phantom Alert Bot"' });
+        res.writeHead(401, { 'www-authenticate': 'Basic realm="Mochbot"' });
         return res.end('Auth required');
       }
       const url = new URL(req.url ?? '/', 'http://x');

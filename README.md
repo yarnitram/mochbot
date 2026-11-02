@@ -1,4 +1,4 @@
-# Phantom Alert Bot
+# Mochbot
 
 Alert-only scanner for **MEXC USDT-perpetual futures** that runs **Phantom SMC MOD-01 (Pro-Trend Confirmation)** on a watchlist and notifies you on **Telegram** and **Discord**. A local **dashboard** shows each coin's stage live.
 

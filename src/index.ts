@@ -47,7 +47,7 @@ startWeb(runner, db, cfg, webDir);
 if (telegram) telegram.poll((cmd, args) => runner.handleCommand(cmd, args), e => console.log('telegram poll error:', (e as Error).message));
 
 console.log(
-  `phantom-alert-bot up | mode=${cfg.paperMode ? 'PAPER (alerts logged, not sent)' : 'LIVE'} | channels=${notifiers.map(n => n.name).join(',') || 'none'} | dashboard :${cfg.port}`,
+  `mochbot up | mode=${cfg.paperMode ? 'PAPER (alerts logged, not sent)' : 'LIVE'} | channels=${notifiers.map(n => n.name).join(',') || 'none'} | dashboard :${cfg.port}`,
 );
 
 const shutdown = () => {

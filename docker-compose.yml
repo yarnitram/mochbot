@@ -1,12 +1,15 @@
 services:
-  phantom-alert-bot:
+  mochbot:
     build: .
-    container_name: phantom-alert-bot
+    container_name: mochbot
     restart: unless-stopped
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     ports:
       - "8787:8787"
     volumes:
       - bot-data:/data
 volumes:
   bot-data:
+
