@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phantom Alert Bot</title>
+<style>
+  :root { --bg:#0e1116; --card:#161b22; --line:#262d38; --txt:#e6edf3; --mut:#8b98a8; --blue:#3b82f6; --amber:#f59e0b; --green:#22c55e; --red:#ef4444; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui,Segoe UI,sans-serif; background:var(--bg); color:var(--txt); }
+  header { display:flex; gap:12px; align-items:center; padding:14px 20px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  h1 { font-size:17px; margin:0; margin-right:auto; }
+  .pill { padding:3px 10px; border-radius:99px; font-size:12px; border:1px solid var(--line); color:var(--mut); }
+  .pill.paper { color:var(--amber); border-color:var(--amber); }
+  .pill.live { color:var(--green); border-color:var(--green); }
+  main { padding:20px; max-width:1100px; margin:auto; display:grid; gap:20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
+  h2 { font-size:14px; margin:0 0 10px; color:var(--mut); font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+  table { width:100%; border-collapse:collapse; }
+  th,td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--mut); font-weight:500; font-size:12px; }
+  .badge { padding:2px 9px; border-radius:6px; font-size:12px; font-weight:600; }
+  .IDLE { background:#2a313c; color:var(--mut); }
+  .WATCH { background:#1d3a6e; color:#9ec1ff; }
+  .ARMED { background:#6b4a0a; color:#ffd27a; }
+  .ENTRY_READY { background:#14532d; color:#86efac; }
+  .long { color:var(--green); } .short { color:var(--red); }
+  button, input, select { background:#0b0f14; color:var(--txt); border:1px solid var(--line); border-radius:6px; padding:6px 10px; font:inherit; }
+  button { cursor:pointer; } button:hover { border-color:var(--blue); }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .sugg { position:relative; }
+  #sugg { position:absolute; top:100%; left:0; background:var(--card); border:1px solid var(--line); border-radius:6px; z-index:5; max-height:240px; overflow:auto; min-width:200px; }
+  #sugg div { padding:6px 10px; cursor:pointer; } #sugg div:hover { background:#222a35; }
+  .mut { color:var(--mut); } small { color:var(--mut); }
+  .x { color:var(--red); background:none; border:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Phantom Alert Bot</h1>
+  <span id="mode" class="pill">-</span>
+  <span id="chan" class="pill">-</span>
+  <label class="pill"><input type="checkbox" id="kz"> Killzone filter</label>
+  <label class="pill"><input type="checkbox" id="mute"> Mute</label>
+  <span id="conn" class="pill">connecting</span>
+</header>
+<main>
+  <div class="card">
+    <h2>Add coin (MEXC USDT perpetual)</h2>
+    <div class="row">
+      <div class="sugg"><input id="q" placeholder="Search e.g. BTC" autocomplete="off"><div id="sugg" hidden></div></div>
+      <button id="add">Add</button><span id="msg" class="mut"></span>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Watchlist</h2>
+    <table>
+      <thead><tr><th>Symbol</th><th>Stage</th><th>Dir</th><th>Price</th><th>Zone</th><th>Detail</th><th>Killzone</th><th></th></tr></thead>
+      <tbody id="wl"></tbody>
+    </table>
+    <small id="empty" hidden>No coins yet. Add one above.</small>
+  </div>
+  <div class="card">
+    <h2>Recent alerts</h2>
+    <table>
+      <thead><tr><th>Time</th><th>Symbol</th><th>Stage</th><th>Dir</th><th>Entry / SL / TP1 / TP2</th><th>Order</th><th>Sent</th></tr></thead>
+      <tbody id="al"></tbody>
+    </table>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const fmt = n => n == null ? '-' : (Math.abs(n) >= 100 ? n.toFixed(2) : Math.abs(n) >= 1 ? n.toFixed(4) : n.toPrecision(5));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let state = { watchlist: [] };
+
+async function api(path, opts) {
+  const r = await fetch(path, opts && { ...opts, headers: { 'content-type': 'application/json' }, body: opts.body && JSON.stringify(opts.body) });
+  return r.json();
+}
+
+function detail(s) {
+  if (!s) return '<span class="mut">waiting for data</span>';
+  if (s.stage === 'WATCH') return `${s.distanceAtr.toFixed(2)} ATR(15m) from POI`;
+  if (s.stage === 'ARMED') return `need 1m close ${s.direction === 'LONG' ? 'above' : 'below'} ${fmt(s.needBreak)}<br><small>${s.barsSinceTap} bars since tap</small>`;
+  if (s.stage === 'ENTRY_READY') return `entry ${fmt(s.entry)} · SL ${fmt(s.sl)}<br><small>${esc(s.orderType || '')}: ${esc(s.orderNote || '')}</small>`;
+  return '<span class="mut">no setup nearby</span>';
+}
+
+function renderWl() {
+  const body = $('wl'); body.innerHTML = '';
+  $('empty').hidden = state.watchlist.length > 0;
+  for (const w of state.watchlist) {
+    const s = w.state, stage = s ? s.stage : 'IDLE';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><b>${esc(w.symbol)}</b></td>
+      <td><span class="badge ${stage}">${stage.replace('_',' ')}</span></td>
+      <td class="${s && s.direction === 'LONG' ? 'long' : 'short'}">${s && s.direction ? s.direction : ''}</td>
+      <td>${s ? fmt(s.price) : '-'}</td>
+      <td>${s && s.zone ? fmt(s.zone.bottom) + ' – ' + fmt(s.zone.top) : '-'}</td>
+      <td>${detail(s)}</td>
+      <td><select data-kz="${esc(w.symbol)}"><option value="">global</option><option value="1" ${w.killzone === 1 ? 'selected' : ''}>on</option><option value="0" ${w.killzone === 0 ? 'selected' : ''}>off</option></select></td>
+      <td><button class="x" data-rm="${esc(w.symbol)}" title="Remove">✕</button></td>`;
+    body.appendChild(tr);
+  }
+}
+
+function renderMeta() {
+  const m = $('mode'); m.textContent = state.mode === 'paper' ? 'PAPER: alerts logged, not sent' : 'LIVE'; m.className = 'pill ' + state.mode;
+  $('chan').textContent = `Telegram ${state.channels.telegram ? 'on' : 'off'} · Discord ${state.channels.discord ? 'on' : 'off'}`;
+  $('kz').checked = state.killzone; $('mute').checked = state.muted;
+}
+
+async function loadAlerts() {
+  const rows = await api('/api/alerts');
+  $('al').innerHTML = rows.map(a => {
+    const p = a.payload, e = p.stage === 'ENTRY_READY';
+    return `<tr><td>${new Date(a.ts * 1000).toLocaleString()}</td><td>${esc(a.symbol)}</td>
+      <td><span class="badge ${a.stage}">${a.stage.replace('_',' ')}</span></td>
+      <td class="${a.direction === 'LONG' ? 'long' : 'short'}">${a.direction || ''}</td>
+      <td>${e ? [p.entry, p.sl, p.tp1, p.tp2].map(fmt).join(' / ') : '-'}</td>
+      <td>${e ? esc(p.orderType || '') : ''}</td><td>${a.delivered ? '✓' : '–'}</td></tr>`;
+  }).join('');
+}
+
+async function load() { state = await api('/api/state'); renderMeta(); renderWl(); }
+
+function connect() {
+  const es = new EventSource('/api/events');
+  es.onopen = () => { $('conn').textContent = 'live'; $('conn').className = 'pill live'; };
+  es.onerror = () => { $('conn').textContent = 'reconnecting'; $('conn').className = 'pill'; };
+  es.addEventListener('state', ev => {
+    const d = JSON.parse(ev.data);
+    if (d.removed) state.watchlist = state.watchlist.filter(w => w.symbol !== d.symbol);
+    else { const w = state.watchlist.find(x => x.symbol === d.symbol); if (w) w.state = d.setup; }
+    renderWl();
+  });
+  es.addEventListener('alert', () => loadAlerts());
+}
+
+$('add').onclick = async () => {
+  const symbol = $('q').value.trim(); if (!symbol) return;
+  $('msg').textContent = 'adding…';
+  const r = await api('/api/watchlist', { method: 'POST', body: { symbol } });
+  $('msg').textContent = r.msg || r.error || ''; $('q').value = ''; $('sugg').hidden = true; load();
+};
+let t;
+$('q').oninput = () => {
+  clearTimeout(t);
+  t = setTimeout(async () => {
+    const q = $('q').value.trim(); if (!q) { $('sugg').hidden = true; return; }
+    const list = await api('/api/symbols?q=' + encodeURIComponent(q));
+    $('sugg').innerHTML = list.map(s => `<div data-s="${esc(s)}">${esc(s)}</div>`).join('');
+    $('sugg').hidden = list.length === 0;
+  }, 200);
+};
+$('sugg').onclick = e => { const s = e.target.dataset.s; if (s) { $('q').value = s; $('sugg').hidden = true; } };
+$('q').onkeydown = e => { if (e.key === 'Enter') $('add').click(); };
+$('wl').onclick = async e => { const s = e.target.dataset.rm; if (s) { await api('/api/watchlist/' + s, { method: 'DELETE' }); load(); } };
+$('wl').onchange = async e => {
+  const s = e.target.dataset.kz; if (!s) return;
+  const v = e.target.value; await api('/api/watchlist/' + s, { method: 'PATCH', body: { killzone: v === '' ? null : v === '1' } }); load();
+};
+$('kz').onchange = async () => { state = await api('/api/settings', { method: 'POST', body: { killzone: $('kz').checked } }); renderMeta(); };
+$('mute').onchange = async () => { state = await api('/api/settings', { method: 'POST', body: { muted: $('mute').checked } }); renderMeta(); };
+
+load().then(loadAlerts).then(connect);
+</script>
+</body>
+</html>

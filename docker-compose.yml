@@ -1,0 +1,12 @@
+services:
+  phantom-alert-bot:
+    build: .
+    container_name: phantom-alert-bot
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8787:8787"
+    volumes:
+      - bot-data:/data
+volumes:
+  bot-data:
