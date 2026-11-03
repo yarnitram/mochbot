@@ -154,3 +154,125 @@ export async function fetchTopMemePerps(limit = 50): Promise<string[]> {
   ]);
   return parseTopMemeTickers(detailJson, tickerJson, limit);
 }
+
+export const KNOWN_AI_BASES = new Set([
+  'FET', 'NEAR', 'RENDER', 'TAO', 'GRT', 'WLD', 'ICP', 'IO', 'ATH', 'ARKM',
+  'TURBO', 'AI', 'AGIX', 'OCEAN', 'RNDR', 'SPEC', 'GLM', 'NMR', 'AIOZ', 'AKT',
+  'NOS', 'VIRTUAL', 'LPT', 'RSS3', 'TRAC', 'ALI', 'PHB', 'DEAI', 'ORAI', 'COOKIE'
+]);
+
+export const KNOWN_GAME_BASES = new Set([
+  'GALA', 'AXS', 'SAND', 'MANA', 'BEAM', 'ILV', 'PIXEL', 'PORTAL', 'RON', 'YGG',
+  'NOT', 'BIGTIME', 'ALICE', 'ENJ', 'APE', 'PRIME', 'SUPER', 'MAGIC', 'XAI',
+  'HERO', 'ACE', 'MAVIA', 'DAR', 'SLP', 'TLM', 'FLOW', 'CHZ', 'WAXP'
+]);
+
+export function isAiPlate(p: string): boolean {
+  if (typeof p !== 'string') return false;
+  const s = p.toLowerCase();
+  if (s.includes('mainly') || s.includes('tradfi')) return false;
+  return s.includes('aiagent') || s.includes('aicompute') || s.includes('aistorage') ||
+         s.includes('aicomputing') || s.includes('aisemi') || s.includes('aiapp') ||
+         s.includes('aipower') || s === 'mc-trade-zone-ai' || s.endsWith('-ai') || s.includes('-ai-');
+}
+
+export function isGamePlate(p: string): boolean {
+  if (typeof p !== 'string') return false;
+  const s = p.toLowerCase();
+  return s.includes('game') || s.includes('metaverse') || s.includes('play');
+}
+
+export function parseTopAiTickers(contractJson: any, tickerJson: any, limit = 50): string[] {
+  const contracts: any[] = Array.isArray(contractJson?.data) ? contractJson.data : [];
+  const tickers: any[] = Array.isArray(tickerJson?.data) ? tickerJson.data : [];
+
+  const symbols = new Set<string>();
+  for (const c of contracts) {
+    if (!c || c.quoteCoin !== 'USDT' || c.state !== 0 || !String(c.symbol).endsWith('_USDT')) continue;
+    // Exclude stock synthetics from crypto AI
+    if (String(c.symbol).includes('STOCK_')) continue;
+    const plates: string[] = Array.isArray(c.conceptPlate) ? c.conceptPlate : [];
+    const isPlate = plates.some(isAiPlate);
+    const base = String(c.baseCoin || '').toUpperCase();
+    const isKnown = KNOWN_AI_BASES.has(base);
+    if (isPlate || isKnown) symbols.add(c.symbol);
+  }
+
+  const tickerMap = new Map<string, number>();
+  for (const t of tickers) {
+    if (t?.symbol && Number(t.amount24) > 0) tickerMap.set(t.symbol, Number(t.amount24));
+  }
+
+  return Array.from(symbols)
+    .sort((a, b) => (tickerMap.get(b) ?? 0) - (tickerMap.get(a) ?? 0))
+    .slice(0, limit);
+}
+
+export function parseTopGameTickers(contractJson: any, tickerJson: any, limit = 50): string[] {
+  const contracts: any[] = Array.isArray(contractJson?.data) ? contractJson.data : [];
+  const tickers: any[] = Array.isArray(tickerJson?.data) ? tickerJson.data : [];
+
+  const symbols = new Set<string>();
+  for (const c of contracts) {
+    if (!c || c.quoteCoin !== 'USDT' || c.state !== 0 || !String(c.symbol).endsWith('_USDT')) continue;
+    if (String(c.symbol).includes('STOCK_')) continue;
+    const plates: string[] = Array.isArray(c.conceptPlate) ? c.conceptPlate : [];
+    const isPlate = plates.some(isGamePlate);
+    const base = String(c.baseCoin || '').toUpperCase();
+    const isKnown = KNOWN_GAME_BASES.has(base);
+    if (isPlate || isKnown) symbols.add(c.symbol);
+  }
+
+  const tickerMap = new Map<string, number>();
+  for (const t of tickers) {
+    if (t?.symbol && Number(t.amount24) > 0) tickerMap.set(t.symbol, Number(t.amount24));
+  }
+
+  return Array.from(symbols)
+    .sort((a, b) => (tickerMap.get(b) ?? 0) - (tickerMap.get(a) ?? 0))
+    .slice(0, limit);
+}
+
+export function parseTopGainers(tickerJson: any, minVolumeUsd = 5_000_000, limit = 25): string[] {
+  const tickers: any[] = Array.isArray(tickerJson?.data) ? tickerJson.data : [];
+  return tickers
+    .filter(t => t && typeof t.symbol === 'string' && t.symbol.endsWith('_USDT') && !t.symbol.includes('STOCK_') && Number(t.amount24) >= minVolumeUsd && Number(t.riseFallRate) > 0)
+    .sort((a, b) => Number(b.riseFallRate) - Number(a.riseFallRate))
+    .slice(0, limit)
+    .map(t => String(t.symbol));
+}
+
+export function parseTopLosers(tickerJson: any, minVolumeUsd = 5_000_000, limit = 25): string[] {
+  const tickers: any[] = Array.isArray(tickerJson?.data) ? tickerJson.data : [];
+  return tickers
+    .filter(t => t && typeof t.symbol === 'string' && t.symbol.endsWith('_USDT') && !t.symbol.includes('STOCK_') && Number(t.amount24) >= minVolumeUsd && Number(t.riseFallRate) < 0)
+    .sort((a, b) => Number(a.riseFallRate) - Number(b.riseFallRate))
+    .slice(0, limit)
+    .map(t => String(t.symbol));
+}
+
+export async function fetchTopAiPerps(limit = 50): Promise<string[]> {
+  const [detailJson, tickerJson] = await Promise.all([
+    getJson('/api/v1/contract/detail'),
+    getJson('/api/v1/contract/ticker'),
+  ]);
+  return parseTopAiTickers(detailJson, tickerJson, limit);
+}
+
+export async function fetchTopGamePerps(limit = 50): Promise<string[]> {
+  const [detailJson, tickerJson] = await Promise.all([
+    getJson('/api/v1/contract/detail'),
+    getJson('/api/v1/contract/ticker'),
+  ]);
+  return parseTopGameTickers(detailJson, tickerJson, limit);
+}
+
+export async function fetchTopGainers(minVolumeUsd = 5_000_000, limit = 25): Promise<string[]> {
+  const tickerJson = await getJson('/api/v1/contract/ticker');
+  return parseTopGainers(tickerJson, minVolumeUsd, limit);
+}
+
+export async function fetchTopLosers(minVolumeUsd = 5_000_000, limit = 25): Promise<string[]> {
+  const tickerJson = await getJson('/api/v1/contract/ticker');
+  return parseTopLosers(tickerJson, minVolumeUsd, limit);
+}

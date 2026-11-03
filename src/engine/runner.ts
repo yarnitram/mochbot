@@ -32,6 +32,10 @@ export interface RunnerDeps {
   fetchContracts: () => Promise<ContractInfo[]>;
   fetchTopVolumePerps?: (limit: number) => Promise<string[]>;
   fetchTopMemePerps?: (limit: number) => Promise<string[]>;
+  fetchTopAiPerps?: (limit: number) => Promise<string[]>;
+  fetchTopGamePerps?: (limit: number) => Promise<string[]>;
+  fetchTopGainers?: (minVolumeUsd: number, limit: number) => Promise<string[]>;
+  fetchTopLosers?: (minVolumeUsd: number, limit: number) => Promise<string[]>;
   chartsDir?: string;
   notifiers: Notifier[];
   log?: (msg: string) => void;
@@ -83,20 +87,92 @@ export class Runner extends EventEmitter {
     const v = this.d.db.getSetting('meme_scanner');
     return v === null ? true : v === '1';
   }
+  get aiScannerEnabled(): boolean {
+    return this.d.db.getSetting('ai_scanner') === '1';
+  }
+  get gameScannerEnabled(): boolean {
+    return this.d.db.getSetting('game_scanner') === '1';
+  }
+  get gainersScannerEnabled(): boolean {
+    return this.d.db.getSetting('gainers_scanner') === '1';
+  }
+  get losersScannerEnabled(): boolean {
+    return this.d.db.getSetting('losers_scanner') === '1';
+  }
+  get ultraLevScannerEnabled(): boolean {
+    return this.d.db.getSetting('ultra_lev_scanner') === '1';
+  }
+  get minGainerVolume(): number {
+    const v = this.d.db.getSetting('min_gainer_volume');
+    return v ? Number(v) : 5_000_000;
+  }
+  get maxActiveCoins(): number {
+    const v = this.d.db.getSetting('max_active_coins');
+    return v ? Number(v) : 150;
+  }
+  get minLeverage(): number {
+    const v = this.d.db.getSetting('min_leverage');
+    return v ? Number(v) : 1;
+  }
+
+  get anyScannerActive(): boolean {
+    return this.autoScannerEnabled || this.memeScannerEnabled || this.aiScannerEnabled ||
+           this.gameScannerEnabled || this.gainersScannerEnabled || this.losersScannerEnabled ||
+           this.ultraLevScannerEnabled;
+  }
 
   ensureAutoScanTimer() {
-    if ((this.autoScannerEnabled || this.memeScannerEnabled) && !this.autoScanTimer) {
+    if (this.anyScannerActive && !this.autoScanTimer) {
       this.autoScanTimer = setInterval(() => void this.runAutoScan(), 3600_000);
-    } else if (!this.autoScannerEnabled && !this.memeScannerEnabled && this.autoScanTimer) {
+    } else if (!this.anyScannerActive && this.autoScanTimer) {
       clearInterval(this.autoScanTimer);
       this.autoScanTimer = null;
     }
   }
 
+  async setAutoScanner(on: boolean): Promise<string[]> {
+    this.d.db.setSetting('auto_scanner', on ? '1' : '0');
+    this.ensureAutoScanTimer();
+    return await this.runAutoScan();
+  }
   async setMemeScanner(on: boolean): Promise<string[]> {
     this.d.db.setSetting('meme_scanner', on ? '1' : '0');
     this.ensureAutoScanTimer();
     return await this.runAutoScan();
+  }
+  async setAiScanner(on: boolean): Promise<string[]> {
+    this.d.db.setSetting('ai_scanner', on ? '1' : '0');
+    this.ensureAutoScanTimer();
+    return await this.runAutoScan();
+  }
+  async setGameScanner(on: boolean): Promise<string[]> {
+    this.d.db.setSetting('game_scanner', on ? '1' : '0');
+    this.ensureAutoScanTimer();
+    return await this.runAutoScan();
+  }
+  async setGainersScanner(on: boolean): Promise<string[]> {
+    this.d.db.setSetting('gainers_scanner', on ? '1' : '0');
+    this.ensureAutoScanTimer();
+    return await this.runAutoScan();
+  }
+  async setLosersScanner(on: boolean): Promise<string[]> {
+    this.d.db.setSetting('losers_scanner', on ? '1' : '0');
+    this.ensureAutoScanTimer();
+    return await this.runAutoScan();
+  }
+  async setUltraLevScanner(on: boolean): Promise<string[]> {
+    this.d.db.setSetting('ultra_lev_scanner', on ? '1' : '0');
+    this.ensureAutoScanTimer();
+    return await this.runAutoScan();
+  }
+  setMinGainerVolume(val: number) {
+    this.d.db.setSetting('min_gainer_volume', String(val));
+  }
+  setMaxActiveCoins(val: number) {
+    this.d.db.setSetting('max_active_coins', String(val));
+  }
+  setMinLeverage(val: number) {
+    this.d.db.setSetting('min_leverage', String(val));
   }
 
   setKillzone(on: boolean) {
@@ -104,11 +180,6 @@ export class Runner extends EventEmitter {
   }
   setMuted(m: boolean) {
     this.d.db.setSetting('mute', m ? '1' : '0');
-  }
-  async setAutoScanner(on: boolean): Promise<string[]> {
-    this.d.db.setSetting('auto_scanner', on ? '1' : '0');
-    this.ensureAutoScanTimer();
-    return await this.runAutoScan();
   }
 
   getStrategyForSymbol(symbol: string): StrategyId {
@@ -151,9 +222,9 @@ export class Runner extends EventEmitter {
       await this.activate(w.symbol).catch(e => this.log(`activate ${w.symbol}: ${(e as Error).message}`));
     }
 
-    // Run auto-scanner if either volume or meme scanner enabled
-    if ((this.autoScannerEnabled || this.memeScannerEnabled) && this.d.fetchTopVolumePerps) {
-      void this.runAutoScan();
+    // Run auto-scanner if any discovery feed is enabled
+    if (this.anyScannerActive && this.d.fetchTopVolumePerps) {
+      await this.runAutoScan();
       this.ensureAutoScanTimer();
     }
   }
@@ -200,11 +271,58 @@ export class Runner extends EventEmitter {
   // ---------- auto-scanner ----------
   async runAutoScan(limit = 50): Promise<string[]> {
     try {
-      this.log(`auto-scanner: fetching top volume and meme pairs from MEXC...`);
-      const topSymbols = (this.autoScannerEnabled && this.d.fetchTopVolumePerps) ? await this.d.fetchTopVolumePerps(limit) : [];
-      const memeSymbols = (this.memeScannerEnabled && this.d.fetchTopMemePerps) ? await this.d.fetchTopMemePerps(limit) : [];
+      this.log(`auto-scanner: fetching multi-sector market feeds from MEXC...`);
+      const [volumeSymbols, memeSymbols, aiSymbols, gameSymbols, gainersSymbols, losersSymbols] = await Promise.all([
+        (this.autoScannerEnabled && this.d.fetchTopVolumePerps) ? this.d.fetchTopVolumePerps(limit) : Promise.resolve([]),
+        (this.memeScannerEnabled && this.d.fetchTopMemePerps) ? this.d.fetchTopMemePerps(limit) : Promise.resolve([]),
+        (this.aiScannerEnabled && this.d.fetchTopAiPerps) ? this.d.fetchTopAiPerps(35) : Promise.resolve([]),
+        (this.gameScannerEnabled && this.d.fetchTopGamePerps) ? this.d.fetchTopGamePerps(35) : Promise.resolve([]),
+        (this.gainersScannerEnabled && this.d.fetchTopGainers) ? this.d.fetchTopGainers(this.minGainerVolume, 25) : Promise.resolve([]),
+        (this.losersScannerEnabled && this.d.fetchTopLosers) ? this.d.fetchTopLosers(this.minGainerVolume, 25) : Promise.resolve([]),
+      ]);
 
-      const keepSet = new Set<string>([...topSymbols, ...memeSymbols]);
+      // Contract max leverage lookup map
+      const contractLevMap = new Map(this.contracts.map(c => [c.symbol, c.maxLeverage ?? 50]));
+      const minLev = this.minLeverage;
+
+      // Ultra-high leverage candidates (>=200x) if enabled
+      let ultraLevSymbols: string[] = [];
+      if (this.ultraLevScannerEnabled) {
+        ultraLevSymbols = this.contracts
+          .filter(c => (c.maxLeverage ?? 0) >= 200 && !c.symbol.includes('STOCK_'))
+          .map(c => c.symbol);
+      }
+
+      // Assign category tags: 5=Gain, 6=Dip, 2=Meme, 3=AI, 4=Game, 7=UltraLev, 1=Volume
+      // Priority: Specific sectors over generic volume
+      const tagMap = new Map<string, number>();
+      const candidateList: string[] = [];
+
+      const addCandidates = (symbols: string[], tag: number) => {
+        for (const sym of symbols) {
+          const lev = contractLevMap.get(sym) ?? 50;
+          if (lev < minLev) continue;
+          if (this.ultraLevScannerEnabled && lev < 200) continue;
+          if (!tagMap.has(sym)) {
+            tagMap.set(sym, tag);
+            candidateList.push(sym);
+          }
+        }
+      };
+
+      addCandidates(gainersSymbols, 5); // GAIN
+      addCandidates(losersSymbols, 6);  // DIP
+      addCandidates(memeSymbols, 2);     // MEME
+      addCandidates(aiSymbols, 3);       // AI
+      addCandidates(gameSymbols, 4);     // GAME
+      addCandidates(ultraLevSymbols, 7); // LEV (200x-500x)
+      addCandidates(volumeSymbols, 1);   // VOL
+
+      // Cap at maxActiveCoins (default 150)
+      const cap = Math.max(10, this.maxActiveCoins);
+      const keepSymbols = candidateList.slice(0, cap);
+      const keepSet = new Set<string>(keepSymbols);
+
       const removed = this.d.db.removeAutoWatchesExcept(keepSet);
       for (const s of removed) {
         this.d.feed.unsubscribe(s);
@@ -216,26 +334,15 @@ export class Runner extends EventEmitter {
       }
 
       const globalStrat = this.d.db.getGlobalStrategy();
-
-      // 1. Add top volume coins (is_auto = 1)
-      for (const sym of topSymbols) {
-        const added = this.d.db.addWatch(sym, 1, globalStrat);
+      for (const sym of keepSymbols) {
+        const tag = tagMap.get(sym) ?? 1;
+        const added = this.d.db.addWatch(sym, tag, globalStrat);
         if (added && !this.store.has(sym)) {
-          await this.activate(sym).catch(e => this.log(`auto-scan activate ${sym}: ${(e as Error).message}`));
+          await this.activate(sym).catch(e => this.log(`activate ${sym}: ${(e as Error).message}`));
         }
       }
 
-      // 2. Add top meme coins (is_auto = 2 unless already volume 1)
-      for (const sym of memeSymbols) {
-        const existing = this.d.db.listWatch().find(w => w.symbol === sym);
-        const isAutoVal = existing && existing.is_auto === 1 ? 1 : 2;
-        const added = this.d.db.addWatch(sym, isAutoVal, globalStrat);
-        if (added && !this.store.has(sym)) {
-          await this.activate(sym).catch(e => this.log(`meme-scan activate ${sym}: ${(e as Error).message}`));
-        }
-      }
-
-      this.log(`auto-scanner: synced ${topSymbols.length} volume pairs + ${memeSymbols.length} meme pairs (${keepSet.size} total active, removed ${removed.length} expired)`);
+      this.log(`auto-scanner: synced ${keepSet.size} active coins [Vol:${volumeSymbols.length}, Meme:${memeSymbols.length}, AI:${aiSymbols.length}, Game:${gameSymbols.length}, Gain:${gainersSymbols.length}, Dip:${losersSymbols.length}] (removed ${removed.length})`);
       this.emit('watchlist_updated');
       return Array.from(keepSet);
     } catch (e) {

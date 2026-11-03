@@ -78,6 +78,14 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
     muted: runner.muted,
     autoScanner: runner.autoScannerEnabled,
     memeScanner: runner.memeScannerEnabled,
+    aiScanner: runner.aiScannerEnabled,
+    gameScanner: runner.gameScannerEnabled,
+    gainersScanner: runner.gainersScannerEnabled,
+    losersScanner: runner.losersScannerEnabled,
+    ultraLevScanner: runner.ultraLevScannerEnabled,
+    minGainerVolume: runner.minGainerVolume,
+    maxActiveCoins: runner.maxActiveCoins,
+    minLeverage: runner.minLeverage,
     globalStrategy: db.getGlobalStrategy(),
     channels: { telegram: !!cfg.telegramToken, discord: !!cfg.discordWebhook },
     performance: db.getPerformanceSummary(),
@@ -101,7 +109,14 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
         chartUrl: t.chart_file ? `/api/charts/${t.chart_file}` : null,
       };
     }),
-    watchlist: db.listWatch().map(w => ({ ...w, state: runner.states.get(w.symbol) ?? null })),
+    watchlist: db.listWatch().map(w => {
+      const contract = runner.contracts.find(c => c.symbol === w.symbol);
+      return {
+        ...w,
+        maxLeverage: contract?.maxLeverage ?? 50,
+        state: runner.states.get(w.symbol) ?? null,
+      };
+    }),
   });
 
   const server = createServer(async (req, res) => {
@@ -317,6 +332,14 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
         if (typeof b.muted === 'boolean') runner.setMuted(b.muted);
         if (typeof b.auto_scanner === 'boolean') await runner.setAutoScanner(b.auto_scanner);
         if (typeof b.meme_scanner === 'boolean') await runner.setMemeScanner(b.meme_scanner);
+        if (typeof b.ai_scanner === 'boolean') await runner.setAiScanner(b.ai_scanner);
+        if (typeof b.game_scanner === 'boolean') await runner.setGameScanner(b.game_scanner);
+        if (typeof b.gainers_scanner === 'boolean') await runner.setGainersScanner(b.gainers_scanner);
+        if (typeof b.losers_scanner === 'boolean') await runner.setLosersScanner(b.losers_scanner);
+        if (typeof b.ultra_lev_scanner === 'boolean') await runner.setUltraLevScanner(b.ultra_lev_scanner);
+        if (typeof b.min_gainer_volume === 'number' && b.min_gainer_volume >= 0) runner.setMinGainerVolume(b.min_gainer_volume);
+        if (typeof b.max_active_coins === 'number' && b.max_active_coins >= 10) runner.setMaxActiveCoins(b.max_active_coins);
+        if (typeof b.min_leverage === 'number' && b.min_leverage >= 1) runner.setMinLeverage(b.min_leverage);
         if (b.global_strategy && (b.global_strategy === 'MOD-01' || b.global_strategy === 'MOD-01D')) db.setGlobalStrategy(b.global_strategy);
         if (typeof b.account_capital === 'number' && b.account_capital > 0) db.setAccountCapital(b.account_capital);
         if (typeof b.default_margin === 'number' && b.default_margin > 0) db.setDefaultMargin(b.default_margin);

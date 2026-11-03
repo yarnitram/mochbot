@@ -92,8 +92,14 @@
   <span id="mode" class="pill">-</span>
   <span id="chan" class="pill">-</span>
   <label class="pill" title="Filter entries to London (07-11 UTC) and NY (13-17 UTC)"><input type="checkbox" id="kz"> Killzones</label>
-  <label class="pill" title="Track Top 50 MEXC volume perpetuals automatically"><input type="checkbox" id="scanner"> 📈 Top 50 Volume</label>
-  <label class="pill" title="Track Top 50 MEXC meme perpetuals automatically"><input type="checkbox" id="meme-scanner"> 🐶 Top 50 Memes</label>
+  <label class="pill" title="Track Top 50 MEXC volume perpetuals automatically"><input type="checkbox" id="scanner"> 📈 Vol</label>
+  <label class="pill" title="Track Top 50 MEXC meme perpetuals automatically"><input type="checkbox" id="meme-scanner"> 🐶 Memes</label>
+  <label class="pill" title="Track Top 35 MEXC AI perpetuals automatically"><input type="checkbox" id="ai-scanner"> 🤖 AI</label>
+  <label class="pill" title="Track Top 35 MEXC Gaming & Metaverse perpetuals"><input type="checkbox" id="game-scanner"> 🎮 Gaming</label>
+  <label class="pill" title="Track Top 25 gainers with >=$5M 24h volume"><input type="checkbox" id="gainers-scanner"> 🚀 Gainers</label>
+  <label class="pill" title="Track Top 25 losers/dips with >=$5M 24h volume"><input type="checkbox" id="losers-scanner"> 🩸 Losers</label>
+  <label class="pill" title="Only track high-leverage perpetuals (200x-500x)"><input type="checkbox" id="ultra-lev-scanner"> ⚡ 200x–500x</label>
+  <button id="btn-open-scanner-modal" class="btn-test pill" style="background:#1e293b; border-color:#475569; color:#f1f5f9; cursor:pointer;" title="Configure Auto-Scanner Feeds, Volume Thresholds, & Leverage Tiers">⚙️ Scanner Feeds</button>
   <label class="pill" title="Play audible chime on ARMED and siren on ENTRY_READY"><input type="checkbox" id="sound" checked> 🔊 Alarm</label>
   <button id="test-audio" class="btn-test pill" title="Test browser audio synthesizer">🔔 Test Sound</button>
   <label class="pill"><input type="checkbox" id="mute"> Mute</label>
@@ -178,7 +184,20 @@
           <span>Watchlist &amp; Scanner Feed</span>
           <small id="wl-count" class="mut"></small>
         </h2>
-        <button id="btn-reset-scanner" style="padding:4px 10px; font-size:11px; background:#0c4a6e; border-color:#0284c7; color:#38bdf8; border-radius:4px; cursor:pointer;" title="Re-evaluate all coins with current strategy settings">🔄 Reset Scanner</button>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <select id="wl-sector-filter" style="padding:4px 8px; font-size:11px; background:#161b22; color:#c9d1d9; border:1px solid #30363d; border-radius:4px;">
+            <option value="ALL">All Sectors &amp; Feeds</option>
+            <option value="1">VOL (Volume Leaders)</option>
+            <option value="2">MEME (Meme Coins)</option>
+            <option value="3">AI (AI Tokens)</option>
+            <option value="4">GAME (Gaming Tokens)</option>
+            <option value="5">GAIN (Top Gainers)</option>
+            <option value="6">DIP (Top Losers)</option>
+            <option value="7">500x (Ultra Leverage)</option>
+            <option value="0">PINNED (Manual Coins)</option>
+          </select>
+          <button id="btn-reset-scanner" style="padding:4px 10px; font-size:11px; background:#0c4a6e; border-color:#0284c7; color:#38bdf8; border-radius:4px; cursor:pointer;" title="Re-evaluate all coins with current strategy settings">🔄 Reset Scanner</button>
+        </div>
       </div>
       <div class="row" style="margin-bottom:12px;">
         <div class="sugg"><input id="q" placeholder="Pin coin (e.g. BTC)" autocomplete="off"><div id="sugg" hidden></div></div>
@@ -211,7 +230,14 @@
           <select id="filter-type" style="padding:4px 8px; font-size:12px;">
             <option value="all">All Coins</option>
             <option value="watching">Active Watchlist Only</option>
+            <option value="vol">Volume Leaders Only</option>
             <option value="memes">Meme Coins Only</option>
+            <option value="ai">AI Tokens Only</option>
+            <option value="game">Gaming Tokens Only</option>
+            <option value="gainers">Top Gainers Only</option>
+            <option value="losers">Top Losers Only</option>
+            <option value="ultra">Ultra-Lev (200x+) Only</option>
+            <option value="pinned">Pinned Coins Only</option>
             <option value="trades">Traded Only</option>
           </select>
           <select id="filter-strat" style="padding:4px 8px; font-size:12px;">
@@ -314,6 +340,62 @@
 
 
 <!-- Strategy Settings Modal -->
+<!-- Scanner Feeds & Discovery Settings Modal -->
+<div id="scanner-modal" class="modal" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+  <div class="card" style="max-width:580px; width:100%; border-color:#38bdf8; max-height:90vh; overflow-y:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h3 style="margin:0; font-size:16px;">📡 Auto-Scanner &amp; Discovery Settings</h3>
+      <button onclick="$('scanner-modal').style.display='none'" class="x" style="font-size:18px;">✕</button>
+    </div>
+    <p style="font-size:12px; color:#8b949e; margin-bottom:14px;">
+      Configure automated coin discovery feeds from MEXC. Matching coins are synchronized to your watchlist and monitored 24/7.
+    </p>
+
+    <h4 style="margin:8px 0 6px 0; font-size:13px; color:#58a6ff;">1. Sector &amp; Market Feeds</h4>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:16px;">
+      <label class="pill" style="justify-content:flex-start; padding:6px 10px;"><input type="checkbox" id="modal-feed-vol"> 📈 Top Volume (50)</label>
+      <label class="pill" style="justify-content:flex-start; padding:6px 10px;"><input type="checkbox" id="modal-feed-meme"> 🐶 Top Memes (50)</label>
+      <label class="pill" style="justify-content:flex-start; padding:6px 10px;"><input type="checkbox" id="modal-feed-ai"> 🤖 Top AI (35)</label>
+      <label class="pill" style="justify-content:flex-start; padding:6px 10px;"><input type="checkbox" id="modal-feed-game"> 🎮 Top Gaming (35)</label>
+      <label class="pill" style="justify-content:flex-start; padding:6px 10px;"><input type="checkbox" id="modal-feed-gain"> 🚀 Top Gainers (25)</label>
+      <label class="pill" style="justify-content:flex-start; padding:6px 10px;"><input type="checkbox" id="modal-feed-dip"> 🩸 Top Losers / Dips (25)</label>
+      <label class="pill" style="justify-content:flex-start; padding:6px 10px; grid-column:span 2;"><input type="checkbox" id="modal-feed-ultra"> ⚡ Ultra-High Leverage Only (200x–500x Max Lev)</label>
+    </div>
+
+    <h4 style="margin:8px 0 6px 0; font-size:13px; color:#58a6ff;">2. Thresholds &amp; Leverage Filters</h4>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
+      <div>
+        <label style="font-size:11px; color:#8b949e; display:block; margin-bottom:4px;">Minimum 24h Turnover (Gainers/Losers)</label>
+        <input id="input-min-gainer-vol" type="number" step="1000000" min="0" placeholder="5000000" style="width:100%; padding:6px 8px; font-size:12px;">
+        <small class="mut" style="font-size:10px;">Filters illiquid pump-and-dumps ($5M default)</small>
+      </div>
+      <div>
+        <label style="font-size:11px; color:#8b949e; display:block; margin-bottom:4px;">Minimum Max-Leverage Filter</label>
+        <select id="input-min-leverage" style="width:100%; padding:6px 8px; font-size:12px;">
+          <option value="1">All Leverages (1x – 500x)</option>
+          <option value="20">At least 20x</option>
+          <option value="50">At least 50x</option>
+          <option value="100">At least 100x</option>
+          <option value="200">At least 200x (Ultra)</option>
+          <option value="500">500x Only</option>
+        </select>
+        <small class="mut" style="font-size:10px;">Exclude coins below this leverage capability</small>
+      </div>
+    </div>
+
+    <div>
+      <label style="font-size:11px; color:#8b949e; display:block; margin-bottom:4px;">Maximum Active Watchlist Capacity</label>
+      <input id="input-max-active-coins" type="number" step="10" min="20" max="250" placeholder="150" style="width:100%; padding:6px 8px; font-size:12px;">
+      <small class="mut" style="font-size:10px;">Deduplicated active coin limit (150 default for smooth WebSocket performance)</small>
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px;">
+      <button onclick="$('scanner-modal').style.display='none'" style="background:#21262d; border-color:#30363d; font-size:12px;">Cancel</button>
+      <button id="save-scanner-btn" style="background:#0284c7; border-color:#0284c7; font-size:12px; font-weight:bold;">💾 Save Scanner Settings</button>
+    </div>
+  </div>
+</div>
+
 <div id="strategy-modal" class="modal" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
   <div class="card" style="max-width:540px; width:92%; padding:20px; background:#161b22; border:1px solid #30363d; border-radius:8px; max-height:90vh; overflow-y:auto;" onclick="event.stopPropagation()">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
@@ -672,14 +754,33 @@ function renderWl() {
       tr = document.createElement('tr');
       tr.dataset.sym = w.symbol;
 
-      const tag = w.is_auto === 2
-        ? '<span class="badge-tag tag-meme" style="background:#4a154b; color:#f472b6; border:1px solid #db2777;" title="Auto-scanned meme coin">MEME</span>'
-        : (w.is_auto === 1
-           ? '<span class="badge-tag tag-auto" title="Auto-scanned volume leader">AUTO</span>'
-           : '<span class="badge-tag tag-pinned" title="Manually pinned">PINNED</span>');
+      const secFilter = $('wl-sector-filter')?.value || 'ALL';
+      if (secFilter !== 'ALL' && String(w.is_auto ?? 0) !== secFilter) {
+        if (tr) tr.style.display = 'none';
+        continue;
+      }
+
+      const tag = (w.is_auto === 0)
+        ? '<span class="badge-tag tag-pinned" title="Manually pinned">PINNED</span>'
+        : (w.is_auto === 2
+           ? '<span class="badge-tag tag-meme" style="background:#4a154b; color:#f472b6; border:1px solid #db2777;" title="Auto-scanned meme coin">MEME</span>'
+           : (w.is_auto === 3
+              ? '<span class="badge-tag" style="background:#083344; color:#38bdf8; border:1px solid #0891b2;" title="Auto-scanned AI token">AI</span>'
+              : (w.is_auto === 4
+                 ? '<span class="badge-tag" style="background:#3b0764; color:#c084fc; border:1px solid #9333ea;" title="Auto-scanned Gaming token">GAME</span>'
+                 : (w.is_auto === 5
+                    ? '<span class="badge-tag" style="background:#064e3b; color:#34d399; border:1px solid #059669;" title="Top 24h Gainer">GAIN</span>'
+                    : (w.is_auto === 6
+                       ? '<span class="badge-tag" style="background:#4c0519; color:#fb7185; border:1px solid #e11d48;" title="Top 24h Loser / Dip">DIP</span>'
+                       : (w.is_auto === 7
+                          ? '<span class="badge-tag" style="background:#451a03; color:#fbbf24; border:1px solid #d97706;" title="Ultra-High Leverage (200x-500x)">500x</span>'
+                          : '<span class="badge-tag tag-auto" title="Auto-scanned volume leader">VOL</span>'))))));
+      const levBadge = w.maxLeverage
+        ? `<span class="badge-tag" style="background:#1c2128; color:#8b949e; border:1px solid #30363d; font-size:10px; margin-left:3px;" title="Max Leverage">${w.maxLeverage}x</span>`
+        : '';
 
       tr.innerHTML = `
-        <td class="col-tag">${tag}</td>
+        <td class="col-tag"><div style="display:inline-flex; align-items:center;">${tag}${levBadge}</div></td>
         <td class="col-sym"><a class="coin-link" onclick="openJournal('${esc(w.symbol)}')">${esc(w.symbol)}</a></td>
         <td class="col-strat">
           <select data-strat="${esc(w.symbol)}" style="padding:2px 6px; font-size:11px;">
@@ -705,7 +806,33 @@ function renderWl() {
       `;
       body.appendChild(tr);
     } else {
-      // Row exists: update only dynamic cells so active dropdowns/buttons are NOT destroyed
+      const secFilter = $('wl-sector-filter')?.value || 'ALL';
+      if (secFilter !== 'ALL' && String(w.is_auto ?? 0) !== secFilter) {
+        tr.style.display = 'none';
+        continue;
+      } else {
+        tr.style.display = '';
+      }
+      const tagEl = tr.querySelector('.col-tag');
+      if (tagEl) {
+        const tag = (w.is_auto === 0)
+          ? '<span class="badge-tag tag-pinned" title="Manually pinned">PINNED</span>'
+          : (w.is_auto === 2
+             ? '<span class="badge-tag tag-meme" style="background:#4a154b; color:#f472b6; border:1px solid #db2777;" title="Auto-scanned meme coin">MEME</span>'
+             : (w.is_auto === 3
+                ? '<span class="badge-tag" style="background:#083344; color:#38bdf8; border:1px solid #0891b2;" title="Auto-scanned AI token">AI</span>'
+                : (w.is_auto === 4
+                   ? '<span class="badge-tag" style="background:#3b0764; color:#c084fc; border:1px solid #9333ea;" title="Auto-scanned Gaming token">GAME</span>'
+                   : (w.is_auto === 5
+                      ? '<span class="badge-tag" style="background:#064e3b; color:#34d399; border:1px solid #059669;" title="Top 24h Gainer">GAIN</span>'
+                      : (w.is_auto === 6
+                         ? '<span class="badge-tag" style="background:#4c0519; color:#fb7185; border:1px solid #e11d48;" title="Top 24h Loser / Dip">DIP</span>'
+                         : (w.is_auto === 7
+                            ? '<span class="badge-tag" style="background:#451a03; color:#fbbf24; border:1px solid #d97706;" title="Ultra-High Leverage (200x-500x)">500x</span>'
+                            : '<span class="badge-tag tag-auto" title="Auto-scanned volume leader">VOL</span>'))))));
+        const levBadge = w.maxLeverage ? `<span class="badge-tag" style="background:#1c2128; color:#8b949e; border:1px solid #30363d; font-size:10px; margin-left:3px;" title="Max Leverage">${w.maxLeverage}x</span>` : '';
+        tagEl.innerHTML = `<div style="display:inline-flex; align-items:center;">${tag}${levBadge}</div>`;
+      }
       const stageEl = tr.querySelector('.col-stage');
       if (stageEl) stageEl.innerHTML = `<span class="badge ${stage}">${stage.replace('_',' ')}</span>`;
 
@@ -802,6 +929,11 @@ function renderMeta() {
   $('kz').checked = state.killzone;
   $('scanner').checked = state.autoScanner;
   if ($('meme-scanner')) $('meme-scanner').checked = state.memeScanner;
+  if ($('ai-scanner')) $('ai-scanner').checked = state.aiScanner;
+  if ($('game-scanner')) $('game-scanner').checked = state.gameScanner;
+  if ($('gainers-scanner')) $('gainers-scanner').checked = state.gainersScanner;
+  if ($('losers-scanner')) $('losers-scanner').checked = state.losersScanner;
+  if ($('ultra-lev-scanner')) $('ultra-lev-scanner').checked = state.ultraLevScanner;
   $('mute').checked = state.muted;
 }
 
@@ -1366,10 +1498,84 @@ $('scanner').onchange = async () => {
 if ($('meme-scanner')) $('meme-scanner').onchange = async () => {
   $('meme-scanner').disabled = true;
   state = await api('/api/settings', { method: 'POST', body: { meme_scanner: $('meme-scanner').checked } });
-  renderMeta();
-  renderWl();
+  renderMeta(); renderWl();
   $('meme-scanner').disabled = false;
 };
+if ($('ai-scanner')) $('ai-scanner').onchange = async () => {
+  $('ai-scanner').disabled = true;
+  state = await api('/api/settings', { method: 'POST', body: { ai_scanner: $('ai-scanner').checked } });
+  renderMeta(); renderWl();
+  $('ai-scanner').disabled = false;
+};
+if ($('game-scanner')) $('game-scanner').onchange = async () => {
+  $('game-scanner').disabled = true;
+  state = await api('/api/settings', { method: 'POST', body: { game_scanner: $('game-scanner').checked } });
+  renderMeta(); renderWl();
+  $('game-scanner').disabled = false;
+};
+if ($('gainers-scanner')) $('gainers-scanner').onchange = async () => {
+  $('gainers-scanner').disabled = true;
+  state = await api('/api/settings', { method: 'POST', body: { gainers_scanner: $('gainers-scanner').checked } });
+  renderMeta(); renderWl();
+  $('gainers-scanner').disabled = false;
+};
+if ($('losers-scanner')) $('losers-scanner').onchange = async () => {
+  $('losers-scanner').disabled = true;
+  state = await api('/api/settings', { method: 'POST', body: { losers_scanner: $('losers-scanner').checked } });
+  renderMeta(); renderWl();
+  $('losers-scanner').disabled = false;
+};
+if ($('ultra-lev-scanner')) $('ultra-lev-scanner').onchange = async () => {
+  $('ultra-lev-scanner').disabled = true;
+  state = await api('/api/settings', { method: 'POST', body: { ultra_lev_scanner: $('ultra-lev-scanner').checked } });
+  renderMeta(); renderWl();
+  $('ultra-lev-scanner').disabled = false;
+};
+if ($('btn-open-scanner-modal')) $('btn-open-scanner-modal').onclick = () => {
+  $('modal-feed-vol').checked = !!state.autoScanner;
+  $('modal-feed-meme').checked = !!state.memeScanner;
+  $('modal-feed-ai').checked = !!state.aiScanner;
+  $('modal-feed-game').checked = !!state.gameScanner;
+  $('modal-feed-gain').checked = !!state.gainersScanner;
+  $('modal-feed-dip').checked = !!state.losersScanner;
+  $('modal-feed-ultra').checked = !!state.ultraLevScanner;
+  $('input-min-gainer-vol').value = state.minGainerVolume ?? 5000000;
+  $('input-min-leverage').value = String(state.minLeverage ?? 1);
+  $('input-max-active-coins').value = state.maxActiveCoins ?? 150;
+  $('scanner-modal').style.display = 'flex';
+};
+if ($('save-scanner-btn')) $('save-scanner-btn').onclick = async () => {
+  const btn = $('save-scanner-btn');
+  const orig = btn.textContent;
+  btn.textContent = '⏳ Saving & Scanning...';
+  btn.disabled = true;
+  try {
+    state = await api('/api/settings', {
+      method: 'POST',
+      body: {
+        auto_scanner: $('modal-feed-vol').checked,
+        meme_scanner: $('modal-feed-meme').checked,
+        ai_scanner: $('modal-feed-ai').checked,
+        game_scanner: $('modal-feed-game').checked,
+        gainers_scanner: $('modal-feed-gain').checked,
+        losers_scanner: $('modal-feed-dip').checked,
+        ultra_lev_scanner: $('modal-feed-ultra').checked,
+        min_gainer_volume: Number($('input-min-gainer-vol').value) || 5000000,
+        min_leverage: Number($('input-min-leverage').value) || 1,
+        max_active_coins: Number($('input-max-active-coins').value) || 150,
+      }
+    });
+    renderMeta();
+    renderWl();
+    $('scanner-modal').style.display = 'none';
+  } catch (err) {
+    alert('Failed to save scanner settings: ' + err.message);
+  } finally {
+    btn.textContent = orig;
+    btn.disabled = false;
+  }
+};
+if ($('wl-sector-filter')) $('wl-sector-filter').onchange = () => { renderWl(); };
 $('mute').onchange = async () => { state = await api('/api/settings', { method: 'POST', body: { muted: $('mute').checked } }); renderMeta(); };
 
 load().then(loadAlerts).then(connect).then(handleRoute);
