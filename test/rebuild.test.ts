@@ -5,8 +5,27 @@ import { Db } from '../src/db/index.js';
 import { LifecycleManager } from '../src/engine/lifecycle.js';
 import { limitScenario } from './fixtures.js';
 import type { Setup } from '../src/types.js';
+import { formatAlert } from '../src/notify/format.js';
 
 describe('MOD-01E chronological rebuild', () => {
+  it.each([.382,.5,.618])('describes the actual %s entry ratio, anchors and timeframes in pending notes and alerts', (entryFib) => {
+    const {candles,bias,cfg} = limitScenario();
+    const pending = evaluateMod01e('TEST_USDT',candles.slice(0,1770),candles[1770],bias,{...cfg,entryFib});
+    expect(pending.stage).toBe('ARMED');
+    expect(pending.limitContext?.fibRatio).toBe(entryFib);
+    expect(pending.orderNote).toContain('1H bias → 15m CHoCH confirmed (body close)');
+    expect(pending.orderNote).toContain(`${entryFib} Fib (${Number((entryFib*100).toFixed(4))}%)`);
+    expect(pending.orderNote).toContain('Fib 0:');
+    expect(pending.orderNote).toContain('(broken swing high)');
+    expect(pending.orderNote).toContain('(impulse low)');
+    expect(pending.orderNote).toContain('18 × 5m bars (90 minutes)');
+    const context = pending.limitContext!;
+    expect(pending.entry).toBeCloseTo(context.fibZero+(context.fibOne-context.fibZero)*entryFib,8);
+    expect(formatAlert(pending)).toContain(`Setup notes: ${pending.orderNote}`);
+    const db=new Db(':memory:');db.saveLimitOrder(pending);
+    expect(JSON.parse(db.listLimitOrders()[0].payload).limitContext).toEqual(context);
+    db.close();
+  });
   it('excludes incomplete and gapped higher timeframe buckets', () => {
     const { candles } = limitScenario();
     expect(aggregateClosed(candles.slice(0,14),15)).toHaveLength(0);
@@ -28,6 +47,9 @@ describe('MOD-01E chronological rebuild', () => {
     expect(a.orderStatus).toBe('TOUCHED');
     expect(a.setupId).toBe(pending.setupId);
     expect(b.setupId).toBe(a.setupId);
+    expect(a.limitContext).toEqual(pending.limitContext);
+    expect(a.orderNote).toContain('0.618 Fib (61.8%)');
+    expect(a.orderNote).toContain('Simulated limit touch; exchange fill is not confirmed');
   });
   it('future bias candles cannot rewrite earlier signals', () => {
     const { candles,bias,cfg } = limitScenario();

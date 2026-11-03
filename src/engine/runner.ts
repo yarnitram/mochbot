@@ -538,14 +538,7 @@ export class Runner extends EventEmitter {
     const newest = this.store.forming(symbol) ?? closed.at(-1);
     const stale = !newest || Date.now() / 1000 - newest.t > 180;
     if (stale) { setup.stage = 'IDLE'; setup.reason = 'Market candles are stale or unavailable'; }
-    if (setup.stage === 'ENTRY_READY' && setup.entry && setup.sl && setup.tp1 && setup.tp2 && setup.direction) {
-      const contract = this.contracts.find(c => c.symbol === symbol);
-      const capital = this.d.db.getAccountCapital();
-      const riskPerTrade = this.d.db.getRiskPerTrade();
-      const maxLev = contract?.maxLeverage ?? 50;
-      const cSize = contract?.contractSize ?? 1;
-      setup.sizing = computePositionSizing(setup.entry, setup.sl, setup.tp1, setup.tp2, setup.direction, capital, riskPerTrade, maxLev, cSize);
-    }
+    setup.sizing = this.sizeSetup(setup);
     const prev = this.states.get(symbol);
     if (!stale && setup.orderStatus && setup.setupId) this.d.db.saveLimitOrder(setup);
     if (!stale && closed.length >= 20 && !this.feedErrors.has(symbol)) this.d.db.reconcileLimitOrders(setup);
@@ -563,6 +556,20 @@ export class Runner extends EventEmitter {
       void this.dispatch(setup);
     }
     return setup;
+  }
+
+  /** Pending plans use the same risk model as simulated entries. */
+  sizeSetup(setup: Setup) {
+    if (setup.entry && setup.sl && setup.tp1 && setup.tp2 && setup.direction) {
+      const symbol = setup.symbol;
+      const contract = this.contracts.find(c => c.symbol === symbol);
+      const capital = this.d.db.getAccountCapital();
+      const riskPerTrade = this.d.db.getRiskPerTrade();
+      const maxLev = contract?.maxLeverage ?? 50;
+      const cSize = contract?.contractSize ?? 1;
+      return computePositionSizing(setup.entry, setup.sl, setup.tp1, setup.tp2, setup.direction, capital, riskPerTrade, maxLev, cSize);
+    }
+    return null;
   }
 
   reEvaluateAll(): { reevaluated: number } {

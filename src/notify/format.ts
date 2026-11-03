@@ -21,6 +21,7 @@ export function formatAlert(s: Setup): string {
   if (s.strategyId === 'MOD-01E') {
     lines[1] = s.stage === 'ARMED' ? 'PENDING LIMIT: ready to place' : s.stage === 'ENTRY_READY' ? 'SIMULATED LIMIT TOUCH' : s.reason ?? s.stage;
     if (s.reason) lines.push(s.reason);
+    if (s.orderNote) lines.push(`Setup notes: ${s.orderNote}`);
   }
   if (s.zone) lines.push(`Zone: ${p(s.zone.bottom)} - ${p(s.zone.top)}`);
   lines.push(`Price: ${p(s.price)}`);
@@ -32,13 +33,15 @@ export function formatAlert(s: Setup): string {
     const tfBreak = (s.strategyId === 'MOD-01D' || s.strategyId === 'MOD-01E') ? '5m' : `${s.ltfMinutes ?? 1}m`;
     if (s.strategyId === 'MOD-01E') {
       lines.push(`Limit entry: ${p(s.entry)}`, `SL: ${p(s.sl)}`, `TP1: ${p(s.tp1)}`, `TP2: ${p(s.tp2)}`);
+      if (s.sizing) lines.push(`Suggested margin: $${s.sizing.margin.toFixed(4)} USDT | Leverage: ${s.sizing.leverage}x`,
+        `Estimated SL loss: $${Math.abs(s.sizing.slRiskUsd).toFixed(2)} | Risk budget: $${s.sizing.riskPerTrade.toFixed(2)} (excludes fees/slippage)`);
       if (s.expiresAt) lines.push(`Expires: ${new Date(s.expiresAt * 1000).toISOString()}`);
     } else if (s.needBreak !== null) lines.push(`Need ${tfBreak} close ${s.direction === 'LONG' ? 'above' : 'below'}: ${p(s.needBreak)}`);
     lines.push(`Bars since tap: ${s.barsSinceTap ?? '-'} / window`);
   }
   if (s.stage === 'ENTRY_READY') {
     lines.push(`Entry: ${p(s.entry)}`, `SL: ${p(s.sl)}`, `TP1 (1:3): ${p(s.tp1)}`, `TP2 (1:5): ${p(s.tp2)}`);
-    if (s.orderType) lines.push(`Order: ${s.orderType.replace('_', '-')} - ${s.orderNote ?? ''}`);
+    if (s.orderType) lines.push(`Order: ${s.orderType.replace('_', '-')}${s.strategyId === 'MOD-01E' ? '' : ' - ' + (s.orderNote ?? '')}`);
     if (s.sizing) {
       const qtyStr = s.sizing.qtyCoins < 0.01 ? s.sizing.qtyCoins.toPrecision(3) : s.sizing.qtyCoins.toFixed(4);
       lines.push(

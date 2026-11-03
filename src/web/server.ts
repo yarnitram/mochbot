@@ -6,6 +6,7 @@ import type { Runner } from '../engine/runner.js';
 import type { Db } from '../db/index.js';
 import type { AppConfig } from '../config.js';
 import { validateMod01eConfig } from '../strategy/mod01e.js';
+import { markTrade } from '../engine/markTrade.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -77,7 +78,12 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
     version: '1.0.0',
     strategy: 'MOD-01E',
     serverTime: Date.now(),
-    limitOrders: db.listLimitOrders().map(o => ({ ...o, payload: JSON.parse(o.payload) })),
+    limitOrders: db.listLimitOrders().map(o => {
+      const payload = JSON.parse(o.payload);
+      // Pending suggestions follow today's risk settings; terminal records keep their saved sizing.
+      if (o.status === 'PENDING') payload.sizing = runner.sizeSetup(payload);
+      return { ...o, payload };
+    }),
     mode: cfg.paperMode ? 'paper' : 'live',
     killzone: runner.killzoneGlobal,
     muted: runner.muted,
@@ -96,22 +102,15 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
     performance: db.getPerformanceSummary(),
     activeTrades: db.getActiveTrades().map(t => {
       const state = runner.states.get(t.symbol);
-      const currentPrice = state?.price ?? t.entry_price;
-      const isLong = t.direction === 'LONG';
-      const risk = Math.abs(t.entry_price - (t.initial_sl_price ?? t.sl_price)) || 1;
-      const rawR = isLong ? (currentPrice - t.entry_price) / risk : (t.entry_price - currentPrice) / risk;
-      const currentR = t.status === 'TP1_HIT' ? Math.abs(t.tp1_price-t.entry_price)/risk/2+rawR/2 : rawR;
-      const notional = t.notional ?? ((t.margin ?? 1) * (t.leverage ?? 50));
-      const slDistPct = risk / Math.max(1e-8, t.entry_price);
-      const currentPnlUsd = currentR * (notional * slDistPct);
-      const margin = t.margin || (notional / (t.leverage || 50)) || 1;
-      const currentPnlPct = (currentPnlUsd / Math.max(0.01, margin)) * 100;
+      const lastTick = runner.lastTick.get(t.symbol);
+      const candleTime = (runner.store.forming(t.symbol) ?? runner.store.closed(t.symbol).at(-1))?.t;
+      const quoteStatus = !state || !Number.isFinite(state.price) ? 'UNAVAILABLE' :
+        lastTick && Date.now()-lastTick<=90_000 && candleTime && Date.now()/1000-candleTime<=180 ? 'LIVE' : 'STALE';
       return {
         ...t,
-        currentPrice,
-        currentR: Number(currentR.toFixed(2)),
-        currentPnlUsd: Number(currentPnlUsd.toFixed(2)),
-        currentPnlPct: Number(currentPnlPct.toFixed(2)),
+        ...markTrade(t,state?.price ?? null),
+        quoteStatus,
+        lastTick:lastTick ?? null,
         chartUrl: t.chart_file ? `/api/charts/${t.chart_file}` : null,
       };
     }),
@@ -393,7 +392,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
           runner.ensureAutoScanTimer();
           await runner.runAutoScan();
         }
-        if (typeof b.killzone === 'boolean') runner.reEvaluateAll();
+        if (typeof b.killzone === 'boolean' || b.account_capital !== undefined || b.risk_per_trade !== undefined) runner.reEvaluateAll();
         push('state_full', snapshot());
         return json(res, 200, snapshot());
       }

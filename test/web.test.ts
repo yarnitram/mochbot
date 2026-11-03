@@ -30,6 +30,45 @@ describe('Limit Desk HTTP integration',()=>{
    expect(runner.mod01eCfg('').entryFib).toBe(.5);
    expect(runner.killzoneGlobal).toBe(false);
    expect((await fetch(url+'/api/strategies/MOD-01/settings',{method:'POST',headers,body:'{}'})).status).toBe(400);
+   const plan={symbol:'BTC_USDT',setupId:'pending',orderStatus:'PENDING',stage:'ARMED',direction:'LONG',ts:100,
+     entry:100,sl:95,tp1:115,tp2:125,expiresAt:9999999999};
+   db.saveLimitOrder({...plan} as any);
+   db.saveLimitOrder({...plan,setupId:'completed',orderStatus:'TOUCHED',sizing:runner.sizeSetup(plan as any)} as any);
+   const settings=await fetch(url+'/api/settings',{method:'POST',headers,body:JSON.stringify({risk_per_trade:10})});
+   expect(settings.status).toBe(200);
+   const orders=await(await fetch(url+'/api/orders',{headers})).json() as any[];
+   const pending=orders.find(o=>o.setup_id==='pending').payload;
+   const completed=orders.find(o=>o.setup_id==='completed').payload;
+   expect(pending.sizing.riskPerTrade).toBe(10);
+   expect(Math.abs(pending.sizing.slRiskUsd)).toBeLessThanOrEqual(10);
+   expect(completed.sizing.riskPerTrade).toBe(5);
+   const id=db.createTrade({symbol:'LIVE_USDT',direction:'LONG',entry_price:100,sl_price:95,tp1_price:115,tp2_price:125,
+     setup_id:'live-setup',margin:10,leverage:10,notional:100,strategy_id:'MOD-01E'});
+   let snapshot=await(await fetch(url+'/api/state',{headers})).json() as any;
+   expect(snapshot.activeTrades[0].currentPnlUsd).toBeNull();
+   expect(snapshot.activeTrades[0].quoteStatus).toBe('UNAVAILABLE');
+   runner.states.set('LIVE_USDT',{price:110} as any);
+   const now=Math.floor(Date.now()/60000)*60;
+   runner.store.ingest('LIVE_USDT',{t:now,o:110,h:110,l:110,c:110,v:1});
+   runner.lastTick.set('LIVE_USDT',Date.now());
+   snapshot=await(await fetch(url+'/api/state',{headers})).json() as any;
+   expect(snapshot.activeTrades[0].id).toBe(id);
+   expect(snapshot.activeTrades[0].quoteStatus).toBe('LIVE');
+   expect(snapshot.activeTrades[0].currentPnlUsd).toBe(10);
+   runner.lifecycle.onPrice('LIVE_USDT',{t:now,o:115,h:115,l:115,c:115,v:1});
+   runner.states.set('LIVE_USDT',{price:120} as any);
+   snapshot=await(await fetch(url+'/api/state',{headers})).json() as any;
+   expect(snapshot.activeTrades[0].realizedPnlUsd).toBe(7.5);
+   expect(snapshot.activeTrades[0].currentPnlUsd).toBe(17.5);
+   runner.lastTick.set('LIVE_USDT',Date.now()-100_000);
+   snapshot=await(await fetch(url+'/api/state',{headers})).json() as any;
+   expect(snapshot.activeTrades[0].quoteStatus).toBe('STALE');
+   runner.lifecycle.onPrice('LIVE_USDT',{t:now+60,o:125,h:125,l:125,c:125,v:1});
+   snapshot=await(await fetch(url+'/api/state',{headers})).json() as any;
+   expect(snapshot.activeTrades).toHaveLength(0);
+   const journal=await(await fetch(url+'/api/trades',{headers})).json() as any;
+   expect(journal.history[0].id).toBe(id);
+   expect(journal.history[0].pnl_usd).toBe(20);
   }finally{runner.stop();server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));db.close()}
  });
  it('retains SQLite order plans after reopening the database',()=>{

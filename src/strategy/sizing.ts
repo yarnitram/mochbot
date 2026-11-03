@@ -11,25 +11,29 @@ export function computePositionSizing(
   maxLeverage: number = 50,
   contractSize: number = 1
 ): PositionSizing {
-  const safeEntry = Math.max(1e-8, entry);
-  const slDistPct = Math.max(0.0001, Math.abs(safeEntry - sl) / safeEntry);
+  if (![entry,sl,tp1,tp2,capital,riskPerTrade,maxLeverage,contractSize].every(Number.isFinite) ||
+      entry <= 0 || sl <= 0 || entry === sl || capital <= 0 || riskPerTrade <= 0 || maxLeverage < 1 || contractSize <= 0 ||
+      (direction === 'LONG' ? sl >= entry : sl <= entry)) throw new Error('Invalid position sizing inputs');
+  const safeEntry = entry;
+  const slDistPct = Math.abs(safeEntry - sl) / safeEntry;
   const tp1DistPct = Math.abs(safeEntry - tp1) / safeEntry;
   const tp2DistPct = Math.abs(safeEntry - tp2) / safeEntry;
 
-  // Maximum safe leverage ensuring liquidation is beyond Stop Loss (with 15% buffer for maintenance margin)
+  // Heuristic leverage cap, not an exchange liquidation guarantee.
   const maxSafeLeverage = Math.max(1, Math.floor(0.85 / slDistPct));
-  const leverage = Math.max(1, Math.min(Math.max(1, maxLeverage), maxSafeLeverage));
+  const leverage = Math.max(1, Math.min(Math.floor(maxLeverage), maxSafeLeverage));
 
   // Risk per trade: loss from entry to SL = notional * slDistPct = targetRisk
   // => notional = targetRisk / slDistPct
   // => margin = notional / leverage = targetRisk / (slDistPct * leverage)
   const targetRisk = Math.max(0.1, riskPerTrade);
   const rawMargin = targetRisk / (slDistPct * leverage);
-  const margin = Math.max(0.1, Number(Math.min(capital, rawMargin).toFixed(2)));
-  const notional = Number((margin * leverage).toFixed(2));
+  // Round down rather than increase margin beyond the configured stop-loss budget.
+  const margin = Math.floor(Math.min(capital, rawMargin) * 10_000) / 10_000;
+  const notional = margin * leverage;
 
   const qtyCoins = notional / safeEntry;
-  const qtyContracts = Math.max(1, Math.round(qtyCoins / Math.max(1e-8, contractSize)));
+  const qtyContracts = Math.floor(qtyCoins / contractSize);
 
   const slRiskUsd = -(notional * slDistPct);
   // 50% closed at TP1

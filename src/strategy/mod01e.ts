@@ -1,4 +1,4 @@
-import type { Candle, Direction, EntrySignal, Mod01eCfg, Setup } from '../types.js';
+import type { Candle, Direction, EntrySignal, LimitContext, Mod01eCfg, Setup } from '../types.js';
 import { DEFAULT_MOD01E_CFG } from '../types.js';
 import { aggregateClosed, atr, inKillzone } from './indicators.js';
 
@@ -21,6 +21,14 @@ export function computeStructure(c: Candle[], len = 5) {
 export function calcFibLevel(_long: boolean, zero: number, one: number, ratio: number) {
   return zero + (one - zero) * ratio;
 }
+const timeframe = (minutes: number) => minutes % 60 === 0 ? `${minutes / 60}H` : `${minutes}m`;
+function describeLimit(context: LimitContext, direction: Direction): string {
+  const fmt = (price: number) => Number(price.toPrecision(10)).toString();
+  const pct = Number((context.fibRatio * 100).toFixed(4));
+  return `${timeframe(context.biasMinutes)} bias → ${timeframe(context.chochMinutes)} CHoCH confirmed (${context.breakRule.toLowerCase()}) → ${context.fibRatio} Fib (${pct}%) retracement ${direction === 'LONG' ? 'buy' : 'sell'} limit. ` +
+    `Fib 0: ${fmt(context.fibZero)} (broken swing ${direction === 'LONG' ? 'high' : 'low'}); Fib 1: ${fmt(context.fibOne)} (impulse ${direction === 'LONG' ? 'low' : 'high'}). ` +
+    `Confirmed: ${new Date(context.confirmedAt * 1000).toISOString()}. Expiry: ${context.expiryBars} × ${timeframe(context.expiryBarMinutes)} bars (${context.expiryBars * context.expiryBarMinutes} minutes).`;
+}
 export function validateMod01eConfig(input: Partial<Mod01eCfg>): Mod01eCfg {
   const cfg = { ...DEFAULT_MOD01E_CFG, ...input };
   for (const [key, value] of Object.entries(cfg)) {
@@ -38,6 +46,7 @@ export function validateMod01eConfig(input: Partial<Mod01eCfg>): Mod01eCfg {
   return cfg;
 }
 export interface PendingLimit {
+  limitContext: LimitContext;
   direction: Direction; rangeZero: number; rangeOne: number; plannedEntry: number; plannedStop: number;
   plannedTp1: number; plannedTp2: number; chochTime: number; chochBarIndex: number;
   zoneTop: number; zoneBottom: number; expiresAt: number;
@@ -74,6 +83,7 @@ export function scanMod01e(ltf1m: Candle[], candles1h?: Candle[], cfg = DEFAULT_
       if (long ? b.l <= pending.plannedStop : b.h >= pending.plannedStop) { cancel('INVALIDATED', b.t); continue; }
       if (long ? b.l <= pending.plannedEntry : b.h >= pending.plannedEntry) {
         signals.push({ direction: pending.direction, barIndex: cursor - 1, time: b.t + 60,
+          limitContext: pending.limitContext,
           entry: pending.plannedEntry, sl: pending.plannedStop, tp1: pending.plannedTp1, tp2: pending.plannedTp2,
           zoneId: `01E:${pending.direction}:${pending.chochTime}`, zoneStartTime: pending.chochTime, inKillzone: inKillzone(b.t) });
         pending = null;
@@ -110,7 +120,9 @@ export function scanMod01e(ltf1m: Candle[], candles1h?: Candle[], cfg = DEFAULT_
     const a = calcFibLevel(long, zero, one, cfg.zoneNear), b = calcFibLevel(long, zero, one, cfg.zoneFar);
     pending = { direction: dir, rangeZero: zero, rangeOne: one, plannedEntry: entry, plannedStop: stop,
       plannedTp1: tp1, plannedTp2: tp2, chochTime: bar.t, chochBarIndex: i, zoneTop: Math.max(a, b), zoneBottom: Math.min(a, b),
-      expiresAt: completion + cfg.orderExpiry * cfg.entryTfMinutes * 60 };
+      expiresAt: completion + cfg.orderExpiry * cfg.entryTfMinutes * 60,
+      limitContext: { biasMinutes:cfg.biasTfMinutes, chochMinutes:cfg.alignTfMinutes, expiryBarMinutes:cfg.entryTfMinutes,
+        expiryBars:cfg.orderExpiry, fibRatio:cfg.entryFib, fibZero:zero, fibOne:one, confirmedAt:completion, breakRule:cfg.breakRule } };
   }
   executeUntil(end);
   if (pending && end >= (pending as PendingLimit).expiresAt) cancel('EXPIRED', end);
@@ -138,16 +150,20 @@ export function evaluateMod01e(symbol: string, closed1m: Candle[], forming1m: Ca
   if (sig && now >= sig.time && now - sig.time < cfg.entryTfMinutes * 60 * 3) return { ...base, stage: 'ENTRY_READY',
     direction: sig.direction, setupId: `${symbol}:${sig.zoneId}`, entry: sig.entry, sl: sig.sl, tp1: sig.tp1, tp2: sig.tp2,
     orderType: 'LIMIT', orderStatus: 'TOUCHED', reason: 'Limit touched in market data; simulated entry',
-    orderNote: 'Simulated limit touch; exchange fill is not confirmed' };
+    limitContext: sig.limitContext,
+    orderNote: `${sig.limitContext ? describeLimit(sig.limitContext, sig.direction) + ' ' : ''}Simulated limit touch; exchange fill is not confirmed.` };
   const o = res.pendingOrder;
   if (o) return { ...base, stage: 'ARMED', direction: o.direction, setupId: `${symbol}:01E:${o.direction}:${o.chochTime}`,
     zone: { top: o.zoneTop, bottom: o.zoneBottom, startTime: o.chochTime }, entry: o.plannedEntry, sl: o.plannedStop,
     tp1: o.plannedTp1, tp2: o.plannedTp2, orderType: 'LIMIT', orderStatus: 'PENDING', expiresAt: o.expiresAt, needBreak: o.plannedEntry,
     barsSinceTap: Math.max(0, Math.floor((now - o.chochTime - cfg.alignTfMinutes * 60) / (cfg.entryTfMinutes * 60))),
-    reason: 'Confirmed CHoCH; waiting for limit retest', orderNote: `Pending ${cfg.entryFib} Fibonacci limit` };
+    limitContext: o.limitContext,
+    reason: 'Confirmed CHoCH; waiting for limit retest', orderNote: describeLimit(o.limitContext, o.direction) };
   const terminal = res.terminalOrder;
   if (terminal && now - terminal.time < cfg.entryTfMinutes * 60) {
     base.orderStatus = terminal.status; base.setupId = `${symbol}:01E:${terminal.order.direction}:${terminal.order.chochTime}`;
+    base.limitContext = terminal.order.limitContext;
+    base.orderNote = describeLimit(terminal.order.limitContext, terminal.order.direction);
     base.reason = terminal.status === 'EXPIRED' ? 'Limit expired without a touch' : 'Limit invalidated by structure or stop boundary';
   }
   if ((res.longAllowed || res.shortAllowed) && res.watchLevel !== null && res.atr15m > 0 && base.killzone) {

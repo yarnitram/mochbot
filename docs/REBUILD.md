@@ -14,6 +14,12 @@ Trade milestones use observed tick close prices, rather than cumulative candle e
 
 ## Operations
 
+The Live trades tab automatically lists touched limits registered as OPEN/TP1_HIT simulated positions. It shows current price, net/secured/unrealized P&L, R, return on entry margin, entry sizing, current stop, both targets and progress toward the next target. After TP1, 50% is secured and only the remaining half contributes unrealized P&L. Stale quotes are labeled and unavailable prices show no fabricated zero P&L. Closed positions move to the journal. These are simulated positions, not verified exchange fills.
+
+The limit ledger shows suggested margin, leverage, position notional and estimated stop loss alongside the configured risk budget. Pending plans recalculate using current capital/risk settings; terminal records retain their recorded sizing. Position notional is risk divided by relative entry-to-stop distance. Margin is notional divided by suggested leverage, capped at capital and rounded down to four decimals to avoid increasing the risk budget. Leverage is limited by contract maximum and a stop-distance heuristic, not a guarantee of liquidation safety. Estimates exclude fees, funding, slippage and exchange quantity rounding.
+
+Pending and touched setups include notes on the dashboard and in Telegram/Discord alerts: configured bias/CHoCH timeframes, break rule, entry Fibonacci ratio and percentage, actual Fib 0/1 prices, confirmation time, and expiry duration. The default entry ratio is 0.618; Settings → MOD-01E strategy → Entry Fibonacci ratio accepts alternatives such as 0.382 or 0.5. This is one configured entry level per setup, not multiple staggered orders. Historical ledger payloads retain their recorded notes; older records without this metadata are not relabeled with current settings.
+
 - `npm ci`, `npm run typecheck`, `npm test`, `npm run build`
 - `npm start` serves the application on `PORT` (default 8787).
 - `npm run preview` serves isolated synthetic data on port 8788. It uses no production database, credentials or exchange requests.

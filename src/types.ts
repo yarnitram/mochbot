@@ -152,7 +152,20 @@ export interface Zone {
   mitigated: boolean;
 }
 
+export interface LimitContext {
+  biasMinutes: number;
+  chochMinutes: number;
+  expiryBarMinutes: number;
+  expiryBars: number;
+  fibRatio: number;
+  fibZero: number;
+  fibOne: number;
+  confirmedAt: number;
+  breakRule: Mod01eCfg['breakRule'];
+}
+
 export interface EntrySignal {
+  limitContext?: LimitContext;
   direction: Direction;
   barIndex: number;
   time: number;
@@ -180,6 +193,7 @@ export interface PositionSizing {
 }
 
 export interface Setup {
+  limitContext?: LimitContext;
   reason?: string;
   orderStatus?: 'PENDING' | 'TOUCHED' | 'EXPIRED' | 'INVALIDATED';
   expiresAt?: number;

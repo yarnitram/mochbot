@@ -48,7 +48,7 @@ describe('Trade Lifecycle & Milestones', () => {
     // Leverage capped safely at floor(0.85 / 0.05) = 17 to prevent liquidation before SL
     expect(sizing.leverage).toBe(17);
     expect(sizing.margin).toBeCloseTo(5.88, 2);
-    expect(sizing.notional).toBeCloseTo(99.96, 2);
+    expect(sizing.notional).toBeCloseTo(100, 2);
     expect(sizing.slRiskUsd).toBeCloseTo(-5.0, 1); // Risks exactly ~$5.00
     expect(sizing.tp1ProfitUsd).toBeCloseTo(7.5, 1); // 1.5R = $7.50
     expect(sizing.tp2ProfitUsd).toBeCloseTo(20.0, 1); // 4.0R = $20.00
@@ -69,7 +69,7 @@ describe('Trade Lifecycle & Milestones', () => {
     expect(t!.status).toBe('OPEN');
     expect(t!.margin).toBeCloseTo(5.88, 2);
     expect(t!.leverage).toBe(17);
-    expect(t!.notional).toBeCloseTo(99.96, 2);
+    expect(t!.notional).toBeCloseTo(100, 2);
     expect(db.getActiveTrades()).toHaveLength(1);
   });
 
