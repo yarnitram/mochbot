@@ -143,24 +143,24 @@ export function generateChartSvg(symbol: string, htfCandles: Candle[], ltfCandle
 
   <!-- Header -->
   <g transform="translate(${margin}, ${margin})">
-    <text x="0" y="20" fill="#f0f6fc" font-size="18" font-weight="bold" font-family="sans-serif">${esc(symbol)}</text>
+    <text x="0" y="20" fill="#f0f6fc" font-size="18" font-weight="bold" font-family="sans-serif">${setup.strategyId ? `[${setup.strategyId}] ` : ''}${esc(symbol)}</text>
     <text x="140" y="20" fill="${dirColor}" font-size="15" font-weight="bold" font-family="sans-serif">${dirLabel}</text>
     <text x="250" y="20" fill="#8b949e" font-size="13" font-family="sans-serif">Price: <tspan fill="#f0f6fc" font-weight="bold">${fmt(setup.price)}</tspan></text>
     <text x="${contentW}" y="20" fill="#8b949e" font-size="11" text-anchor="end" font-family="sans-serif">${dateStr}</text>
     <line x1="0" y1="32" x2="${contentW}" y2="32" stroke="#30363d" stroke-width="1"/>
   </g>
 
-  <!-- Panel 1: 15m HTF POI Context -->
+  <!-- Panel 1: HTF POI Context -->
   <g>
     <rect x="${htfLayout.x}" y="${htfLayout.y}" width="${htfLayout.w}" height="${htfLayout.h}" fill="#161b22" rx="4" stroke="#30363d" stroke-width="1"/>
-    <text x="${htfLayout.x + 8}" y="${htfLayout.y - 4}" fill="#8b949e" font-size="11" font-weight="bold" font-family="sans-serif">15m Higher Timeframe (POI Context)</text>
+    <text x="${htfLayout.x + 8}" y="${htfLayout.y - 4}" fill="#8b949e" font-size="11" font-weight="bold" font-family="sans-serif">${setup.strategyId === 'MOD-01D' ? '1H Higher Timeframe (POI Context)' : '15m Higher Timeframe (POI Context)'}</text>
     ${renderPanelCandles(htfSlice, htfLayout, [], zoneInfo)}
   </g>
 
-  <!-- Panel 2: 1m LTF CHoCH Execution -->
+  <!-- Panel 2: LTF CHoCH Execution -->
   <g>
     <rect x="${ltfLayout.x}" y="${ltfLayout.y}" width="${ltfLayout.w}" height="${ltfLayout.h}" fill="#161b22" rx="4" stroke="#30363d" stroke-width="1"/>
-    <text x="${ltfLayout.x + 8}" y="${ltfLayout.y - 4}" fill="#8b949e" font-size="11" font-weight="bold" font-family="sans-serif">1m Lower Timeframe (CHoCH Break &amp; Trade Levels)</text>
+    <text x="${ltfLayout.x + 8}" y="${ltfLayout.y - 4}" fill="#8b949e" font-size="11" font-weight="bold" font-family="sans-serif">${setup.strategyId === 'MOD-01D' ? '5m Execution Timeframe (CHoCH Break &amp; Trade Levels)' : '1m Lower Timeframe (CHoCH Break &amp; Trade Levels)'}</text>
     ${renderPanelCandles(ltfSlice, ltfLayout, ltfLevels, zoneInfo)}
   </g>
 </svg>

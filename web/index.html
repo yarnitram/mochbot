@@ -114,7 +114,10 @@
     <div class="card" style="margin-bottom:20px;">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
         <h2 style="margin:0;">Account &amp; Performance (Phantom SMC MOD-01)</h2>
-        <button id="account-settings-btn" style="padding:4px 10px; font-size:11px;">⚙️ Capital &amp; Margin Settings</button>
+        <div class="row">
+          <button id="strategy-settings-btn" style="padding:4px 10px; font-size:11px; background:#1f2937; border-color:#374151;">⚙️ Strategies</button>
+          <button id="account-settings-btn" style="padding:4px 10px; font-size:11px;">⚙️ Capital &amp; Margin</button>
+        </div>
       </div>
       <div class="stat-grid">
         <div class="stat-box">
@@ -147,6 +150,7 @@
         <thead>
           <tr>
             <th>Symbol</th>
+            <th>Strat</th>
             <th>Dir</th>
             <th>Entry</th>
             <th>Price</th>
@@ -176,7 +180,7 @@
         <button id="add">Pin to Watchlist</button><span id="msg" class="mut"></span>
       </div>
       <table>
-        <thead><tr><th>Type</th><th>Symbol</th><th>Stage</th><th>Dir</th><th>Price</th><th>Zone</th><th>Detail</th><th>Killzone</th><th></th></tr></thead>
+        <thead><tr><th>Type</th><th>Symbol</th><th>Strategy</th><th>Stage</th><th>Dir</th><th>Price</th><th>Zone</th><th>Detail</th><th>Killzone</th><th></th></tr></thead>
         <tbody id="wl"></tbody>
       </table>
       <small id="empty" hidden>No coins yet. Pin one above or enable Auto-Scanner.</small>
@@ -186,7 +190,7 @@
     <div class="card">
       <h2>Recent Alerts &amp; Trade Milestones</h2>
       <table>
-        <thead><tr><th>Time</th><th>Symbol</th><th>Stage</th><th>Dir</th><th>Entry / SL / TP1 / TP2</th><th>Order / Note</th><th>Sent</th></tr></thead>
+        <thead><tr><th>Time</th><th>Symbol</th><th>Strat</th><th>Stage</th><th>Dir</th><th>Entry / SL / TP1 / TP2</th><th>Order / Note</th><th>Sent</th></tr></thead>
         <tbody id="al"></tbody>
       </table>
     </div>
@@ -203,6 +207,11 @@
             <option value="all">All Coins</option>
             <option value="watching">Active Watchlist Only</option>
             <option value="trades">Traded Only</option>
+          </select>
+          <select id="filter-strat" style="padding:4px 8px; font-size:12px;">
+            <option value="ALL">All Strategies</option>
+            <option value="MOD-01">MOD-01 Only</option>
+            <option value="MOD-01D">MOD-01D Only</option>
           </select>
         </div>
       </h2>
@@ -295,6 +304,110 @@
 <!-- Lightbox Modal for Full Chart Images -->
 <div id="lightbox" class="modal" style="display:none;" onclick="this.style.display='none'">
   <img id="lightbox-img" src="" alt="Full Chart">
+</div>
+
+
+<!-- Strategy Settings Modal -->
+<div id="strategy-modal" class="modal" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+  <div class="card" style="max-width:540px; width:92%; padding:20px; background:#161b22; border:1px solid #30363d; border-radius:8px; max-height:90vh; overflow-y:auto;" onclick="event.stopPropagation()">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <h3 style="margin:0; font-size:17px;">⚙️ Multi-Strategy Settings</h3>
+      <button onclick="$('strategy-modal').style.display='none'" class="x" style="font-size:18px;">✕</button>
+    </div>
+
+    <!-- Strategy Tabs -->
+    <div style="display:flex; gap:6px; margin-bottom:16px; border-bottom:1px solid #30363d; padding-bottom:8px;">
+      <button id="tab-strat-global" class="nav-btn active" style="font-size:12px; padding:4px 10px;">Global Default</button>
+      <button id="tab-strat-mod01" class="nav-btn" style="font-size:12px; padding:4px 10px;">MOD-01 (15m/1m)</button>
+      <button id="tab-strat-mod01d" class="nav-btn" style="font-size:12px; padding:4px 10px;">MOD-01D (Top-Down)</button>
+    </div>
+
+    <!-- PANE 1: GLOBAL DEFAULT -->
+    <div id="pane-strat-global">
+      <div style="margin-bottom:14px;">
+        <label style="display:block; font-size:12px; margin-bottom:4px;" class="mut">Default Strategy for Auto-Scanned Volume Coins</label>
+        <select id="input-global-strategy" style="width:100%; padding:6px 8px;">
+          <option value="MOD-01">MOD-01: 15m POI → 1m CHoCH Confirmation</option>
+          <option value="MOD-01D">MOD-01D: Strict Top-Down (4H Bias → 1H POI → 15m Reaction → 5m Entry)</option>
+        </select>
+        <small class="mut" style="display:block; margin-top:6px;">Auto-scanned volume leaders will automatically be assigned this strategy unless overridden in the watchlist.</small>
+      </div>
+    </div>
+
+    <!-- PANE 2: MOD-01 -->
+    <div id="pane-strat-mod01" style="display:none;">
+      <p style="font-size:12px; color:#8b949e; margin-top:0;">Single-timeframe POI with 1m lower-timeframe confirmation break and ATR safety buffers.</p>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">HTF Minutes</label>
+          <input id="input-mod01-htf" type="number" min="5" max="240" step="5" style="width:100%; padding:5px 7px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">POI Search Bars</label>
+          <input id="input-mod01-search" type="number" min="10" max="100" style="width:100%; padding:5px 7px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">Swing Lookback</label>
+          <input id="input-mod01-swing" type="number" min="2" max="20" style="width:100%; padding:5px 7px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">Max Age Bars</label>
+          <input id="input-mod01-maxage" type="number" min="5" max="50" style="width:100%; padding:5px 7px;">
+        </div>
+        <div style="grid-column:1 / -1;">
+          <label style="display:block; font-size:11px;" class="mut">Watch Distance (ATR multiples)</label>
+          <input id="input-mod01-watchdist" type="number" min="0.1" max="5" step="0.1" style="width:100%; padding:5px 7px;">
+        </div>
+      </div>
+    </div>
+
+    <!-- PANE 3: MOD-01D -->
+    <div id="pane-strat-mod01d" style="display:none;">
+      <p style="font-size:12px; color:#8b949e; margin-top:0;">Strict Top-Down Confirmation: 4H Structural Bias → 1H Sweep/Displacement POI → 15m Reaction CHoCH → 5m Entry CHoCH.</p>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">4H Swing Lookback</label>
+          <input id="input-mod01d-swing" type="number" min="2" max="20" style="width:100%; padding:5px 7px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">1H POI Lookback (Bars)</label>
+          <input id="input-mod01d-poibars" type="number" min="10" max="150" style="width:100%; padding:5px 7px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">1H Displacement Multiplier</label>
+          <input id="input-mod01d-dispmult" type="number" min="0.5" max="3" step="0.1" style="width:100%; padding:5px 7px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">15m Reaction Window (Bars)</label>
+          <input id="input-mod01d-reactionwindow" type="number" min="3" max="30" style="width:100%; padding:5px 7px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">5m Entry Break Window (Bars)</label>
+          <input id="input-mod01d-entrywindow" type="number" min="2" max="20" style="width:100%; padding:5px 7px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">SL ATR Buffer Multiplier</label>
+          <input id="input-mod01d-atrbuffer" type="number" min="0.0" max="1" step="0.05" style="width:100%; padding:5px 7px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">TP1 Multiple (R)</label>
+          <input id="input-mod01d-tp1rr" type="number" min="1" max="10" step="0.5" style="width:100%; padding:5px 7px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">TP2 Multiple (R)</label>
+          <input id="input-mod01d-tp2rr" type="number" min="2" max="20" step="0.5" style="width:100%; padding:5px 7px;">
+        </div>
+        <div style="grid-column:1 / -1;">
+          <label class="pill" style="margin-top:4px;"><input type="checkbox" id="input-mod01d-requirefvg"> Require 1H FVG or Structure BOS for POI</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="row" style="justify-content:flex-end; margin-top:16px;">
+      <button onclick="$('strategy-modal').style.display='none'" style="background:#21262d; border-color:#30363d;">Cancel</button>
+      <button id="save-strategies-btn" style="background:#238636; border-color:#2ea043; color:white;">Save Strategy Settings</button>
+    </div>
+  </div>
 </div>
 
 <!-- Account & Sizing Settings Modal -->
@@ -461,8 +574,13 @@ function renderWl() {
     const s = w.state, stage = s ? s.stage : 'IDLE';
     const tag = w.is_auto ? '<span class="badge-tag tag-auto" title="Auto-scanned volume leader">AUTO</span>' : '<span class="badge-tag tag-pinned" title="Manually pinned">PINNED</span>';
     const tr = document.createElement('tr');
+    const curStrat = w.strategy || 'MOD-01';
     tr.innerHTML = `<td>${tag}</td>
       <td><a class="coin-link" onclick="openJournal('${esc(w.symbol)}')">${esc(w.symbol)}</a></td>
+      <td><select data-strat="${esc(w.symbol)}" style="padding:2px 6px; font-size:11px;">
+        <option value="MOD-01" ${curStrat === 'MOD-01' ? 'selected' : ''}>MOD-01</option>
+        <option value="MOD-01D" ${curStrat === 'MOD-01D' ? 'selected' : ''}>MOD-01D</option>
+      </select></td>
       <td><span class="badge ${stage}">${stage.replace('_',' ')}</span></td>
       <td class="${s && s.direction === 'LONG' ? 'long' : 'short'}">${s && s.direction ? s.direction : ''}</td>
       <td>${s ? fmt(s.price) : '-'}</td>
@@ -486,7 +604,9 @@ function renderTrades() {
     const levVal = t.leverage ?? 50;
     const notionalVal = (t.notional ?? ((t.margin ?? 1) * (t.leverage ?? 50))).toFixed(0);
     const tr = document.createElement('tr');
+    const stratBadge = `<span class="badge" style="background:#21262d; border:1px solid #30363d; font-size:10px;">${t.strategy_id || 'MOD-01'}</span>`;
     tr.innerHTML = `<td><a class="coin-link" onclick="openJournal('${esc(t.symbol)}')"><b>${esc(t.symbol)}</b></a></td>
+      <td>${stratBadge}</td>
       <td class="${t.direction === 'LONG' ? 'long' : 'short'}">${t.direction}</td>
       <td>${fmt(t.entry_price)}</td>
       <td>${fmt(t.currentPrice)}</td>
@@ -535,7 +655,9 @@ async function loadAlerts() {
   const rows = await api('/api/alerts');
   $('al').innerHTML = rows.map(a => {
     const p = a.payload, e = p.stage === 'ENTRY_READY';
+    const stratBadge = `<span class="badge" style="background:#21262d; border:1px solid #30363d; font-size:10px;">${p.strategyId || a.strategy_id || 'MOD-01'}</span>`;
     return `<tr><td>${new Date(a.ts * 1000).toLocaleTimeString()}</td><td><a class="coin-link" onclick="openJournal('${esc(a.symbol)}')">${esc(a.symbol)}</a></td>
+      <td>${stratBadge}</td>
       <td><span class="badge ${a.stage}">${a.stage.replace('_',' ')}</span></td>
       <td class="${a.direction === 'LONG' ? 'long' : 'short'}">${a.direction || ''}</td>
       <td>${e ? [p.entry, p.sl, p.tp1, p.tp2].map(fmt).join(' / ') : '-'}</td>
@@ -553,7 +675,8 @@ async function load() {
 
 // ---------- VIEW 2: COIN ANALYTICS HUB ----------
 async function loadAnalytics() {
-  analyticsData = await api('/api/analytics/coins');
+  const strat = $('filter-strat') ? $('filter-strat').value : 'ALL';
+  analyticsData = await api('/api/analytics/coins?strategy=' + encodeURIComponent(strat));
   renderAnalytics();
 }
 
@@ -699,6 +822,91 @@ async function openJournal(symbol, navigate = true) {
   }).join('');
 }
 
+
+// Strategy Settings Modal Logic
+let strategyConfigs = {};
+
+function switchStratTab(paneId) {
+  $('pane-strat-global').style.display = paneId === 'global' ? 'block' : 'none';
+  $('pane-strat-mod01').style.display = paneId === 'mod01' ? 'block' : 'none';
+  $('pane-strat-mod01d').style.display = paneId === 'mod01d' ? 'block' : 'none';
+
+  $('tab-strat-global').classList.toggle('active', paneId === 'global');
+  $('tab-strat-mod01').classList.toggle('active', paneId === 'mod01');
+  $('tab-strat-mod01d').classList.toggle('active', paneId === 'mod01d');
+}
+
+$('tab-strat-global').onclick = () => switchStratTab('global');
+$('tab-strat-mod01').onclick = () => switchStratTab('mod01');
+$('tab-strat-mod01d').onclick = () => switchStratTab('mod01d');
+
+$('strategy-settings-btn').onclick = async () => {
+  try {
+    const data = await api('/api/strategies');
+    strategyConfigs = data;
+    $('input-global-strategy').value = data.globalStrategy || 'MOD-01';
+
+    const mod01 = data.strategies.find(s => s.id === 'MOD-01')?.config || {};
+    $('input-mod01-htf').value = mod01.htfMinutes ?? 15;
+    $('input-mod01-search').value = mod01.poiSearchBars ?? 40;
+    $('input-mod01-swing').value = mod01.swingLookback ?? 5;
+    $('input-mod01-maxage').value = mod01.maxAgeBars ?? 20;
+    $('input-mod01-watchdist').value = mod01.watchDistanceAtr ?? 1.0;
+
+    const mod01d = data.strategies.find(s => s.id === 'MOD-01D')?.config || {};
+    $('input-mod01d-swing').value = mod01d.swingLookback ?? 5;
+    $('input-mod01d-poibars').value = mod01d.poiLookback ?? 50;
+    $('input-mod01d-dispmult').value = mod01d.displacementMult ?? 1.2;
+    $('input-mod01d-reactionwindow').value = mod01d.reactionWindowBars ?? 12;
+    $('input-mod01d-entrywindow').value = mod01d.entryBreakBars ?? 6;
+    $('input-mod01d-atrbuffer').value = mod01d.atrBufferMult ?? 0.1;
+    $('input-mod01d-tp1rr').value = mod01d.tp1Rr ?? 3.0;
+    $('input-mod01d-tp2rr').value = mod01d.tp2Rr ?? 5.0;
+    $('input-mod01d-requirefvg').checked = mod01d.requireFvgOrBos !== false;
+
+    switchStratTab('global');
+    $('strategy-modal').style.display = 'flex';
+  } catch (e) {
+    alert('Failed to load strategy settings: ' + e.message);
+  }
+};
+
+$('save-strategies-btn').onclick = async () => {
+  try {
+    const globalStrat = $('input-global-strategy').value;
+    await api('/api/settings', { method: 'POST', body: { global_strategy: globalStrat } });
+
+    const mod01Cfg = {
+      htfMinutes: parseInt($('input-mod01-htf').value) || 15,
+      poiSearchBars: parseInt($('input-mod01-search').value) || 40,
+      swingLookback: parseInt($('input-mod01-swing').value) || 5,
+      maxAgeBars: parseInt($('input-mod01-maxage').value) || 20,
+      watchDistanceAtr: parseFloat($('input-mod01-watchdist').value) || 1.0,
+    };
+    await api('/api/strategies/MOD-01/settings', { method: 'POST', body: mod01Cfg });
+
+    const mod01dCfg = {
+      swingLookback: parseInt($('input-mod01d-swing').value) || 5,
+      poiLookback: parseInt($('input-mod01d-poibars').value) || 50,
+      displacementMult: parseFloat($('input-mod01d-dispmult').value) || 1.2,
+      reactionWindowBars: parseInt($('input-mod01d-reactionwindow').value) || 12,
+      entryBreakBars: parseInt($('input-mod01d-entrywindow').value) || 6,
+      atrBufferMult: parseFloat($('input-mod01d-atrbuffer').value) || 0.1,
+      tp1Rr: parseFloat($('input-mod01d-tp1rr').value) || 3.0,
+      tp2Rr: parseFloat($('input-mod01d-tp2rr').value) || 5.0,
+      requireFvgOrBos: $('input-mod01d-requirefvg').checked,
+    };
+    await api('/api/strategies/MOD-01D/settings', { method: 'POST', body: mod01dCfg });
+
+    $('strategy-modal').style.display = 'none';
+    load();
+  } catch (e) {
+    alert('Failed to save strategy settings: ' + e.message);
+  }
+};
+
+if ($('filter-strat')) $('filter-strat').onchange = loadAnalytics;
+
 // Settings modal
 $('account-settings-btn').onclick = () => {
   const p = state.performance || {};
@@ -790,8 +998,20 @@ $('sugg').onclick = e => { const s = e.target.dataset.s; if (s) { $('q').value =
 $('q').onkeydown = e => { if (e.key === 'Enter') $('add').click(); };
 $('wl').onclick = async e => { const s = e.target.dataset.rm; if (s) { await api('/api/watchlist/' + s, { method: 'DELETE' }); load(); } };
 $('wl').onchange = async e => {
-  const s = e.target.dataset.kz; if (!s) return;
-  const v = e.target.value; await api('/api/watchlist/' + s, { method: 'PATCH', body: { killzone: v === '' ? null : v === '1' } }); load();
+  const kzSym = e.target.dataset.kz;
+  if (kzSym) {
+    const v = e.target.value;
+    await api('/api/watchlist/' + kzSym, { method: 'PATCH', body: { killzone: v === '' ? null : v === '1' } });
+    load();
+    return;
+  }
+  const stratSym = e.target.dataset.strat;
+  if (stratSym) {
+    const v = e.target.value;
+    await api('/api/watchlist/' + stratSym, { method: 'PATCH', body: { strategy: v } });
+    load();
+    return;
+  }
 };
 $('kz').onchange = async () => { state = await api('/api/settings', { method: 'POST', body: { killzone: $('kz').checked } }); renderMeta(); };
 $('scanner').onchange = async () => { state = await api('/api/settings', { method: 'POST', body: { auto_scanner: $('scanner').checked } }); renderMeta(); };

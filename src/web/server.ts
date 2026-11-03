@@ -60,6 +60,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
     killzone: runner.killzoneGlobal,
     muted: runner.muted,
     autoScanner: runner.autoScannerEnabled,
+    globalStrategy: db.getGlobalStrategy(),
     channels: { telegram: !!cfg.telegramToken, discord: !!cfg.discordWebhook },
     performance: db.getPerformanceSummary(),
     activeTrades: db.getActiveTrades().map(t => {
@@ -92,6 +93,35 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
       const path = url.pathname;
 
       if (path === '/api/state' && req.method === 'GET') return json(res, 200, snapshot());
+      if (path === '/api/strategies' && req.method === 'GET') {
+        return json(res, 200, {
+          globalStrategy: db.getGlobalStrategy(),
+          strategies: [
+            {
+              id: 'MOD-01',
+              name: 'MOD-01: 15m POI → 1m CHoCH',
+              description: 'Single-timeframe POI with 1m lower-timeframe confirmation break and ATR safety buffers.',
+              config: db.getStrategyCfg('MOD-01'),
+            },
+            {
+              id: 'MOD-01D',
+              name: 'MOD-01D: Strict Top-Down Confirmation',
+              description: '4H Bias → 1H Strict POI (liquidity sweep + displacement) → 15m Reaction CHoCH → 5m Entry CHoCH.',
+              config: db.getStrategyCfg('MOD-01D'),
+            },
+          ],
+        });
+      }
+
+      const stratMatch = path.match(/^\/api\/strategies\/([A-Za-z0-9_\-]+)\/settings$/);
+      if (stratMatch && req.method === 'POST') {
+        const id = stratMatch[1].toUpperCase() as any;
+        const b = await readBody(req);
+        db.setStrategyCfg(id, b);
+        push('state_full', snapshot());
+        return json(res, 200, { ok: true, config: db.getStrategyCfg(id) });
+      }
+
       if (path === '/api/alerts' && req.method === 'GET') {
         return json(res, 200, db.recentAlerts(100).map(a => ({ ...a, payload: JSON.parse(a.payload) })));
       }
@@ -111,7 +141,8 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
 
       // Coin Analytics & Journal
       if (path === '/api/analytics/coins' && req.method === 'GET') {
-        const list = db.getCoinAnalytics().map(c => ({
+        const stratFilter = (url.searchParams.get('strategy') ?? 'ALL') as any;
+        const list = db.getCoinAnalytics(stratFilter).map(c => ({
           ...c,
           currentStage: runner.states.get(c.symbol)?.stage ?? 'IDLE',
           currentPrice: runner.states.get(c.symbol)?.price ?? null,
@@ -178,7 +209,11 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
           killzone: b.killzone === undefined ? undefined : b.killzone === null ? null : !!b.killzone,
           sensitivity: b.sensitivity,
           watch_distance: b.watch_distance === undefined ? undefined : b.watch_distance === null ? null : Number(b.watch_distance),
+          strategy: b.strategy,
         });
+        if (b.strategy === 'MOD-01D') {
+          void runner.backfillHtf(sym);
+        }
         return json(res, ok ? 200 : 404, { ok });
       }
       if (path === '/api/settings' && req.method === 'POST') {
@@ -186,6 +221,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
         if (typeof b.killzone === 'boolean') runner.setKillzone(b.killzone);
         if (typeof b.muted === 'boolean') runner.setMuted(b.muted);
         if (typeof b.auto_scanner === 'boolean') runner.setAutoScanner(b.auto_scanner);
+        if (b.global_strategy && (b.global_strategy === 'MOD-01' || b.global_strategy === 'MOD-01D')) db.setGlobalStrategy(b.global_strategy);
         if (typeof b.account_capital === 'number' && b.account_capital > 0) db.setAccountCapital(b.account_capital);
         if (typeof b.default_margin === 'number' && b.default_margin > 0) db.setDefaultMargin(b.default_margin);
         push('state_full', snapshot());

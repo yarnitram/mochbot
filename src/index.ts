@@ -25,7 +25,7 @@ const runner = new Runner({
   cfg,
   db,
   feed: ws,
-  fetchKlines: (s, bars) => fetchKlines(s, 'Min1', bars),
+  fetchKlines: (s, bars, interval = 'Min1') => fetchKlines(s, interval, bars),
   fetchContracts,
   fetchTopVolumePerps,
   notifiers,

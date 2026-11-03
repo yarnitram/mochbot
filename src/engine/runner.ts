@@ -6,7 +6,9 @@ import type { Db } from '../db/index.js';
 import { CandleStore } from '../data/candleStore.js';
 import type { Candle, Setup, StrategyCfg } from '../types.js';
 import { evaluate } from '../strategy/mod01.js';
+import { evaluateMod01d } from '../strategy/mod01d.js';
 import { aggregate } from '../strategy/indicators.js';
+import { StrategyId, Mod01dCfg, DEFAULT_MOD01D_CFG } from '../types.js';
 import { AlertGate } from './alertGate.js';
 import { renderChartPng } from '../chart/renderer.js';
 import { LifecycleManager, type LifecycleEvent } from './lifecycle.js';
@@ -24,7 +26,7 @@ export interface RunnerDeps {
   cfg: AppConfig;
   db: Db;
   feed: FeedLike;
-  fetchKlines: (symbol: string, bars: number) => Promise<Candle[]>;
+  fetchKlines: (symbol: string, bars: number, interval?: string) => Promise<Candle[]>;
   fetchContracts: () => Promise<ContractInfo[]>;
   fetchTopVolumePerps?: (limit: number) => Promise<string[]>;
   chartsDir?: string;
@@ -39,6 +41,8 @@ export class Runner extends EventEmitter {
   readonly states = new Map<string, Setup>();
   readonly lifecycle: LifecycleManager;
   readonly chartsDir: string;
+  readonly htf1h = new Map<string, Candle[]>();
+  readonly htf4h = new Map<string, Candle[]>();
   contracts: ContractInfo[] = [];
   private lastEval = new Map<string, number>();
   private log: (msg: string) => void;
@@ -79,6 +83,16 @@ export class Runner extends EventEmitter {
   setAutoScanner(on: boolean) {
     this.d.db.setSetting('auto_scanner', on ? '1' : '0');
     if (on) void this.runAutoScan();
+  }
+
+  getStrategyForSymbol(symbol: string): StrategyId {
+    const row = this.d.db.listWatch().find(w => w.symbol === symbol);
+    return (row?.strategy as StrategyId) || this.d.db.getGlobalStrategy();
+  }
+
+  mod01dCfg(symbol: string): Mod01dCfg {
+    const custom = this.d.db.getStrategyCfg('MOD-01D') as Partial<Mod01dCfg>;
+    return { ...DEFAULT_MOD01D_CFG, ...custom };
   }
 
   strategyCfg(symbol: string): StrategyCfg {
@@ -131,8 +145,25 @@ export class Runner extends EventEmitter {
   }
 
   async backfill(symbol: string) {
-    const candles = await this.d.fetchKlines(symbol, this.d.cfg.historyBars);
+    const candles = await this.d.fetchKlines(symbol, this.d.cfg.historyBars, 'Min1');
     this.store.setHistory(symbol, candles);
+    const strat = this.getStrategyForSymbol(symbol);
+    if (strat === 'MOD-01D') {
+      await this.backfillHtf(symbol);
+    }
+  }
+
+  async backfillHtf(symbol: string) {
+    try {
+      const [c1h, c4h] = await Promise.all([
+        this.d.fetchKlines(symbol, 150, 'Hour1').catch(() => []),
+        this.d.fetchKlines(symbol, 150, 'Hour4').catch(() => []),
+      ]);
+      if (c1h && c1h.length) this.htf1h.set(symbol, c1h);
+      if (c4h && c4h.length) this.htf4h.set(symbol, c4h);
+    } catch (e) {
+      this.log(`HTF backfill failed for ${symbol}: ${(e as Error).message}`);
+    }
   }
 
   async resyncAll() {
@@ -152,6 +183,8 @@ export class Runner extends EventEmitter {
       for (const s of removed) {
         this.d.feed.unsubscribe(s);
         this.store.drop(s);
+        this.htf1h.delete(s);
+        this.htf4h.delete(s);
         this.states.delete(s);
         this.emit('state', { symbol: s, removed: true });
       }
@@ -197,15 +230,38 @@ export class Runner extends EventEmitter {
     const removed = this.d.db.removeWatch(symbol);
     this.d.feed.unsubscribe(symbol);
     this.store.drop(symbol);
+    this.htf1h.delete(symbol);
+    this.htf4h.delete(symbol);
     this.states.delete(symbol);
     this.emit('state', { symbol, removed: true });
     return { ok: removed, msg: removed ? `${symbol} removed` : `${symbol} was not on the watchlist` };
   }
 
   // ---------- data in ----------
+  private updateHtfBars(symbol: string, c: Candle) {
+    const updateBar = (map: Map<string, Candle[]>, intervalSec: number) => {
+      const arr = map.get(symbol);
+      if (!arr || !arr.length) return;
+      const barT = Math.floor(c.t / intervalSec) * intervalSec;
+      const last = arr[arr.length - 1];
+      if (last.t < barT) {
+        arr.push({ t: barT, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v });
+        if (arr.length > 300) arr.shift();
+      } else if (last.t === barT) {
+        last.h = Math.max(last.h, c.h);
+        last.l = Math.min(last.l, c.l);
+        last.c = c.c;
+        last.v = (last.v ?? 0) + (c.v ?? 0);
+      }
+    };
+    updateBar(this.htf1h, 3600);
+    updateBar(this.htf4h, 14400);
+  }
+
   onKline(symbol: string, c: Candle) {
     if (!this.d.db.listWatch().some(w => w.symbol === symbol)) return;
     const closed = this.store.ingest(symbol, c);
+    this.updateHtfBars(symbol, c);
     const now = Date.now();
     const last = this.lastEval.get(symbol) ?? 0;
     if (closed || now - last >= this.d.cfg.evalThrottleSec * 1000) this.evaluateSymbol(symbol);
@@ -222,7 +278,21 @@ export class Runner extends EventEmitter {
     const closed = this.store.closed(symbol);
     if (closed.length < 20) return null;
     this.lastEval.set(symbol, Date.now());
-    const setup = evaluate(symbol, closed, this.store.forming(symbol), this.strategyCfg(symbol));
+
+    const strategy = this.getStrategyForSymbol(symbol);
+    let setup: Setup;
+
+    if (strategy === 'MOD-01D') {
+      let c1h = this.htf1h.get(symbol);
+      let c4h = this.htf4h.get(symbol);
+      if (!c1h || c1h.length < 10) c1h = aggregate(closed, 60);
+      if (!c4h || c4h.length < 5) c4h = aggregate(closed, 240);
+      setup = evaluateMod01d(symbol, closed, this.store.forming(symbol), c1h, c4h, this.mod01dCfg(symbol));
+      setup.strategyId = 'MOD-01D';
+    } else {
+      setup = evaluate(symbol, closed, this.store.forming(symbol), this.strategyCfg(symbol));
+      setup.strategyId = 'MOD-01';
+    }
     if (setup.stage === 'ENTRY_READY' && setup.entry && setup.sl && setup.tp1 && setup.tp2 && setup.direction) {
       const contract = this.contracts.find(c => c.symbol === symbol);
       const capital = this.d.db.getAccountCapital();
@@ -258,8 +328,16 @@ export class Runner extends EventEmitter {
     if (setup.stage === 'ENTRY_READY') {
       try {
         const ltf = this.store.closed(setup.symbol);
-        const htf = aggregate(ltf, this.strategyCfg(setup.symbol).htfMinutes);
-        chartBuffer = renderChartPng(setup.symbol, htf, ltf, setup);
+        let htfCandles: Candle[];
+        let ltfCandles: Candle[];
+        if (setup.strategyId === 'MOD-01D') {
+          htfCandles = this.htf1h.get(setup.symbol) ?? aggregate(ltf, 60);
+          ltfCandles = aggregate(ltf, 5); // 5m execution
+        } else {
+          htfCandles = aggregate(ltf, this.strategyCfg(setup.symbol).htfMinutes);
+          ltfCandles = ltf; // 1m execution
+        }
+        chartBuffer = renderChartPng(setup.symbol, htfCandles, ltfCandles, setup);
 
         // Save chart to persistent disk folder
         if (chartBuffer && this.chartsDir) {

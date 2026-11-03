@@ -16,12 +16,17 @@ export function mexcLink(symbol: string) {
 
 export function formatAlert(s: Setup): string {
   const dir = s.direction === 'LONG' ? 'LONG 🟢' : 'SHORT 🔴';
-  const lines: string[] = [`${ICON[s.stage] ?? ''} ${s.symbol} ${dir}`, LABEL[s.stage] ?? s.stage];
+  const stratBadge = s.strategyId ? `[${s.strategyId}] ` : '';
+  const lines: string[] = [`${ICON[s.stage] ?? ''} ${stratBadge}${s.symbol} ${dir}`, LABEL[s.stage] ?? s.stage];
   if (s.zone) lines.push(`Zone: ${p(s.zone.bottom)} - ${p(s.zone.top)}`);
   lines.push(`Price: ${p(s.price)}`);
-  if (s.stage === 'WATCH' && s.distanceAtr !== null) lines.push(`Distance to POI: ${s.distanceAtr.toFixed(2)} ATR(15m)`);
+  if (s.stage === 'WATCH' && s.distanceAtr !== null) {
+    const tfStr = s.strategyId === 'MOD-01D' ? '1H' : '15m';
+    lines.push(`Distance to POI: ${s.distanceAtr.toFixed(2)} ATR(${tfStr})`);
+  }
   if (s.stage === 'ARMED') {
-    if (s.needBreak !== null) lines.push(`Need 1m close ${s.direction === 'LONG' ? 'above' : 'below'}: ${p(s.needBreak)}`);
+    const tfBreak = s.strategyId === 'MOD-01D' ? '5m' : '1m';
+    if (s.needBreak !== null) lines.push(`Need ${tfBreak} close ${s.direction === 'LONG' ? 'above' : 'below'}: ${p(s.needBreak)}`);
     lines.push(`Bars since tap: ${s.barsSinceTap ?? '-'} / window`);
   }
   if (s.stage === 'ENTRY_READY') {

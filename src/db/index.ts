@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import type { DatabaseSync as DatabaseSyncT } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { Setup } from '../types.js';
+import type { Setup, StrategyId } from '../types.js';
 
 export interface WatchRow {
   symbol: string;
@@ -10,6 +10,7 @@ export interface WatchRow {
   sensitivity: string | null;
   watch_distance: number | null;
   is_auto: number; // 0 = manual/pinned, 1 = auto-scanned
+  strategy: StrategyId;
   added_at: number;
 }
 
@@ -20,6 +21,7 @@ export interface AlertRow {
   stage: string;
   direction: string | null;
   setup_id: string | null;
+  strategy_id: string;
   delivered: number;
   payload: string;
 }
@@ -42,6 +44,7 @@ export interface TradeRow {
   margin: number;
   leverage: number;
   notional: number;
+  strategy_id: string;
   setup_id: string | null;
   chart_file: string | null;
 }
@@ -76,6 +79,7 @@ export interface CoinStats {
   lastActive: number;
   isWatching: boolean;
   isAuto: boolean;
+  strategy?: StrategyId;
 }
 
 // loaded via require so bundlers/test runners that do not know node:sqlite do not choke on it
@@ -95,6 +99,7 @@ export class Db {
         sensitivity TEXT,
         watch_distance REAL,
         is_auto INTEGER NOT NULL DEFAULT 0,
+        strategy TEXT NOT NULL DEFAULT 'MOD-01',
         added_at INTEGER NOT NULL
       );
       CREATE TABLE IF NOT EXISTS alerts (
@@ -104,6 +109,7 @@ export class Db {
         stage TEXT NOT NULL,
         direction TEXT,
         setup_id TEXT,
+        strategy_id TEXT NOT NULL DEFAULT 'MOD-01',
         delivered INTEGER NOT NULL DEFAULT 0,
         payload TEXT NOT NULL
       );
@@ -127,6 +133,7 @@ export class Db {
         margin REAL DEFAULT 1.0,
         leverage REAL DEFAULT 50.0,
         notional REAL DEFAULT 50.0,
+        strategy_id TEXT NOT NULL DEFAULT 'MOD-01',
         setup_id TEXT UNIQUE,
         chart_file TEXT
       );
@@ -153,23 +160,32 @@ export class Db {
     try {
       this.db.exec(`ALTER TABLE trades ADD COLUMN pnl_usd REAL;`);
     } catch {}
+    try {
+      this.db.exec(`ALTER TABLE watchlist ADD COLUMN strategy TEXT NOT NULL DEFAULT 'MOD-01';`);
+    } catch {}
+    try {
+      this.db.exec(`ALTER TABLE alerts ADD COLUMN strategy_id TEXT NOT NULL DEFAULT 'MOD-01';`);
+    } catch {}
+    try {
+      this.db.exec(`ALTER TABLE trades ADD COLUMN strategy_id TEXT NOT NULL DEFAULT 'MOD-01';`);
+    } catch {}
   }
 
   // ---------- Watchlist ----------
   listWatch(): WatchRow[] {
-    return this.db.prepare('SELECT symbol, killzone, sensitivity, watch_distance, COALESCE(is_auto, 0) as is_auto, added_at FROM watchlist ORDER BY is_auto ASC, symbol ASC').all() as unknown as WatchRow[];
+    return this.db.prepare("SELECT symbol, killzone, sensitivity, watch_distance, COALESCE(is_auto, 0) as is_auto, COALESCE(strategy, 'MOD-01') as strategy, added_at FROM watchlist ORDER BY is_auto ASC, symbol ASC").all() as unknown as WatchRow[];
   }
 
-  addWatch(symbol: string, isAuto = false): boolean {
-    const existing = this.db.prepare('SELECT symbol, is_auto FROM watchlist WHERE symbol = ?').get(symbol) as { symbol: string; is_auto: number } | undefined;
+  addWatch(symbol: string, isAuto = false, strategy: StrategyId = 'MOD-01'): boolean {
+    const existing = this.db.prepare('SELECT symbol, is_auto, strategy FROM watchlist WHERE symbol = ?').get(symbol) as { symbol: string; is_auto: number; strategy: string } | undefined;
     if (existing) {
       if (!isAuto && existing.is_auto === 1) {
-        this.db.prepare('UPDATE watchlist SET is_auto = 0 WHERE symbol = ?').run(symbol);
+        this.db.prepare('UPDATE watchlist SET is_auto = 0, strategy = ? WHERE symbol = ?').run(strategy, symbol);
         return true;
       }
       return false;
     }
-    this.db.prepare('INSERT INTO watchlist(symbol, is_auto, added_at) VALUES (?, ?, ?)').run(symbol, isAuto ? 1 : 0, Math.floor(Date.now() / 1000));
+    this.db.prepare('INSERT INTO watchlist(symbol, is_auto, strategy, added_at) VALUES (?, ?, ?, ?)').run(symbol, isAuto ? 1 : 0, strategy, Math.floor(Date.now() / 1000));
     return true;
   }
 
@@ -203,14 +219,16 @@ export class Db {
       killzone?: boolean | null;
       sensitivity?: string | null;
       watch_distance?: number | null;
+      strategy?: StrategyId;
     }
   ): boolean {
-    const cur = this.db.prepare('SELECT * FROM watchlist WHERE symbol = ?').get(symbol) as WatchRow | undefined;
+    const cur = this.db.prepare("SELECT symbol, killzone, sensitivity, watch_distance, COALESCE(strategy, 'MOD-01') as strategy FROM watchlist WHERE symbol = ?").get(symbol) as any;
     if (!cur) return false;
     const kz = patch.killzone === undefined ? cur.killzone : patch.killzone === null ? null : patch.killzone ? 1 : 0;
     const sens = patch.sensitivity === undefined ? cur.sensitivity : patch.sensitivity;
     const wd = patch.watch_distance === undefined ? cur.watch_distance : patch.watch_distance;
-    this.db.prepare('UPDATE watchlist SET killzone=?, sensitivity=?, watch_distance=? WHERE symbol=?').run(kz, sens, wd, symbol);
+    const strat = patch.strategy || cur.strategy || 'MOD-01';
+    this.db.prepare('UPDATE watchlist SET killzone=?, sensitivity=?, watch_distance=?, strategy=? WHERE symbol=?').run(kz, sens, wd, strat, symbol);
     return true;
   }
 
@@ -243,11 +261,37 @@ export class Db {
     this.setSetting('default_margin', String(Math.max(0.1, val)));
   }
 
+  getGlobalStrategy(): StrategyId {
+    const v = this.getSetting('global_strategy');
+    return v === 'MOD-01D' ? 'MOD-01D' : 'MOD-01';
+  }
+
+  setGlobalStrategy(strat: StrategyId): void {
+    this.setSetting('global_strategy', strat);
+  }
+
+  getStrategyCfg<T = Record<string, any>>(strategyId: StrategyId, defaults?: T): T {
+    const key = `strategy_cfg_${strategyId.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+    const raw = this.getSetting(key);
+    if (!raw) return (defaults ?? {}) as T;
+    try {
+      return { ...(defaults ?? {}), ...JSON.parse(raw) } as T;
+    } catch {
+      return (defaults ?? {}) as T;
+    }
+  }
+
+  setStrategyCfg<T>(strategyId: StrategyId, cfg: T): void {
+    const key = `strategy_cfg_${strategyId.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+    this.setSetting(key, JSON.stringify(cfg));
+  }
+
   // ---------- Alerts ----------
   insertAlert(setup: Setup, delivered: boolean): number {
+    const stratId = setup.strategyId || 'MOD-01';
     const r = this.db
-      .prepare('INSERT INTO alerts(ts, symbol, stage, direction, setup_id, delivered, payload) VALUES (?,?,?,?,?,?,?)')
-      .run(Math.floor(Date.now() / 1000), setup.symbol, setup.stage, setup.direction, setup.setupId, delivered ? 1 : 0, JSON.stringify(setup));
+      .prepare('INSERT INTO alerts(ts, symbol, stage, direction, setup_id, delivered, payload, strategy_id) VALUES (?,?,?,?,?,?,?,?)')
+      .run(Math.floor(Date.now() / 1000), setup.symbol, setup.stage, setup.direction, setup.setupId, delivered ? 1 : 0, JSON.stringify(setup), stratId);
     return Number(r.lastInsertRowid);
   }
 
@@ -277,14 +321,16 @@ export class Db {
     margin?: number;
     leverage?: number;
     notional?: number;
+    strategy_id?: string;
   }): number {
     const now = trade.opened_at ?? Math.floor(Date.now() / 1000);
     const margin = trade.margin ?? this.getDefaultMargin();
     const leverage = trade.leverage ?? 50;
     const notional = trade.notional ?? (margin * leverage);
+    const strategyId = trade.strategy_id || 'MOD-01';
     const r = this.db
-      .prepare(`INSERT INTO trades (symbol, direction, entry_price, sl_price, tp1_price, tp2_price, status, opened_at, setup_id, chart_file, margin, leverage, notional)
-                VALUES (?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?, ?, ?, ?)`)
+      .prepare(`INSERT INTO trades (symbol, direction, entry_price, sl_price, tp1_price, tp2_price, status, opened_at, setup_id, chart_file, margin, leverage, notional, strategy_id)
+                VALUES (?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?, ?, ?, ?, ?)`)
       .run(
         trade.symbol,
         trade.direction,
@@ -297,7 +343,8 @@ export class Db {
         trade.chart_file ?? null,
         margin,
         leverage,
-        notional
+        notional,
+        strategyId
       );
     return Number(r.lastInsertRowid);
   }
@@ -331,8 +378,13 @@ export class Db {
     return this.db.prepare('SELECT * FROM trades ORDER BY id DESC LIMIT ?').all(limit) as unknown as TradeRow[];
   }
 
-  getPerformanceSummary(): PerformanceSummary {
-    const rows = this.db.prepare('SELECT status, pnl_r, pnl_usd FROM trades').all() as unknown as { status: TradeStatus; pnl_r: number | null; pnl_usd: number | null }[];
+  getPerformanceSummary(strategyFilter?: string): PerformanceSummary {
+    const sql = strategyFilter && strategyFilter !== 'ALL'
+      ? "SELECT status, pnl_r, pnl_usd FROM trades WHERE COALESCE(strategy_id, 'MOD-01') = ?"
+      : "SELECT status, pnl_r, pnl_usd FROM trades";
+    const rows = (strategyFilter && strategyFilter !== 'ALL'
+      ? this.db.prepare(sql).all(strategyFilter)
+      : this.db.prepare(sql).all()) as unknown as { status: TradeStatus; pnl_r: number | null; pnl_usd: number | null }[];
     let openTrades = 0;
     let wins = 0;
     let losses = 0;
@@ -374,7 +426,7 @@ export class Db {
   }
 
   // ---------- Coin Analytics & Journal ----------
-  getCoinAnalytics(): CoinStats[] {
+  getCoinAnalytics(strategyFilter?: string): CoinStats[] {
     const symRows = this.db
       .prepare(
         `SELECT DISTINCT symbol FROM (
@@ -387,25 +439,41 @@ export class Db {
       )
       .all() as unknown as { symbol: string }[];
 
-    const watchMap = new Map<string, { is_auto: number }>();
+    const watchMap = new Map<string, { is_auto: number; strategy: StrategyId }>();
     for (const w of this.listWatch()) {
-      watchMap.set(w.symbol, { is_auto: w.is_auto });
+      watchMap.set(w.symbol, { is_auto: w.is_auto, strategy: w.strategy });
     }
 
     const out: CoinStats[] = [];
 
     for (const { symbol } of symRows) {
-      const trades = this.db.prepare('SELECT status, pnl_r, pnl_usd, opened_at FROM trades WHERE symbol = ?').all(symbol) as unknown as {
+      const tradeSql = strategyFilter && strategyFilter !== 'ALL'
+        ? "SELECT status, pnl_r, pnl_usd, opened_at FROM trades WHERE symbol = ? AND COALESCE(strategy_id, 'MOD-01') = ?"
+        : "SELECT status, pnl_r, pnl_usd, opened_at FROM trades WHERE symbol = ?";
+      const trades = (strategyFilter && strategyFilter !== 'ALL'
+        ? this.db.prepare(tradeSql).all(symbol, strategyFilter)
+        : this.db.prepare(tradeSql).all(symbol)) as unknown as {
         status: TradeStatus;
         pnl_r: number | null;
         pnl_usd: number | null;
         opened_at: number;
       }[];
 
-      const alertStats = this.db.prepare('SELECT COUNT(*) as c, MAX(ts) as maxTs FROM alerts WHERE symbol = ?').get(symbol) as unknown as {
+      const alertSql = strategyFilter && strategyFilter !== 'ALL'
+        ? "SELECT COUNT(*) as c, MAX(ts) as maxTs FROM alerts WHERE symbol = ? AND COALESCE(strategy_id, 'MOD-01') = ?"
+        : "SELECT COUNT(*) as c, MAX(ts) as maxTs FROM alerts WHERE symbol = ?";
+      const alertStats = (strategyFilter && strategyFilter !== 'ALL'
+        ? this.db.prepare(alertSql).get(symbol, strategyFilter)
+        : this.db.prepare(alertSql).get(symbol)) as unknown as {
         c: number;
         maxTs: number | null;
       };
+
+      const coinStrat = watchMap.get(symbol)?.strategy;
+      if (strategyFilter && strategyFilter !== 'ALL') {
+        const hasStratActivity = trades.length > 0 || (alertStats?.c ?? 0) > 0 || coinStrat === strategyFilter;
+        if (!hasStratActivity) continue;
+      }
 
       let wins = 0;
       let losses = 0;
@@ -451,6 +519,7 @@ export class Db {
         lastActive,
         isWatching,
         isAuto,
+        strategy: watchMap.get(symbol)?.strategy || 'MOD-01',
       });
     }
 

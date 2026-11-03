@@ -41,6 +41,7 @@ export class LifecycleManager extends EventEmitter {
     const margin = setup.sizing?.margin ?? this.db.getDefaultMargin();
     const leverage = setup.sizing?.leverage ?? 50;
     const notional = setup.sizing?.notional ?? (margin * leverage);
+    const strategyId = setup.strategyId || 'MOD-01';
 
     const id = this.db.createTrade({
       symbol: setup.symbol,
@@ -55,6 +56,7 @@ export class LifecycleManager extends EventEmitter {
       margin,
       leverage,
       notional,
+      strategy_id: strategyId,
     });
 
     const trade: TradeRow = {
@@ -73,6 +75,7 @@ export class LifecycleManager extends EventEmitter {
       margin,
       leverage,
       notional,
+      strategy_id: strategyId,
       setup_id: setup.setupId,
       chart_file: chartFile ?? null,
     };

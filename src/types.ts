@@ -12,6 +12,51 @@ export type Stage = 'IDLE' | 'WATCH' | 'ARMED' | 'ENTRY_READY';
 export type Direction = 'LONG' | 'SHORT';
 export type Sensitivity = 'strict' | 'balanced' | 'sensitive';
 export type OrderType = 'MARKET' | 'LIMIT' | 'TRIGGER_LIMIT';
+export type StrategyId = 'MOD-01' | 'MOD-01D';
+
+export interface Mod01dCfg {
+  biasTfMinutes: number;
+  locationTfMinutes: number;
+  reactionTfMinutes: number;
+  entryTfMinutes: number;
+  biasPivotLen: number;
+  locationPivotLen: number;
+  reactionPivotLen: number;
+  entryPivotLen: number;
+  requireOneHourAlign: boolean;
+  strictPoi: boolean;
+  bodyAtr: number;
+  maxReactionBars: number;
+  maxEntryBars: number;
+  useKillzone: boolean;
+  stopMode: 'Reaction + POI boundary' | 'Reaction swing only';
+  slBufferAtr: number;
+  rrTP1: number;
+  rrTP2: number;
+  watchDistanceAtr: number;
+}
+
+export const DEFAULT_MOD01D_CFG: Mod01dCfg = {
+  biasTfMinutes: 240,
+  locationTfMinutes: 60,
+  reactionTfMinutes: 15,
+  entryTfMinutes: 5,
+  biasPivotLen: 3,
+  locationPivotLen: 3,
+  reactionPivotLen: 2,
+  entryPivotLen: 3,
+  requireOneHourAlign: true,
+  strictPoi: true,
+  bodyAtr: 0.35,
+  maxReactionBars: 12,
+  maxEntryBars: 30,
+  useKillzone: false,
+  stopMode: 'Reaction + POI boundary',
+  slBufferAtr: 0.20,
+  rrTP1: 3.0,
+  rrTP2: 5.0,
+  watchDistanceAtr: 1.0,
+};
 
 export interface StrategyCfg {
   sensitivity: Sensitivity;
@@ -108,6 +153,7 @@ export interface Setup {
   atrHtf: number | null;
   atrLtf: number | null;
   sizing?: PositionSizing | null;
+  strategyId?: StrategyId;
   /** unix seconds of evaluation */
   ts: number;
 }

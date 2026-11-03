@@ -84,9 +84,21 @@ async function getJson(path: string): Promise<any> {
   return json;
 }
 
+const STEP_MAP: Record<string, number> = {
+  Min1: 60,
+  Min5: 300,
+  Min15: 900,
+  Min30: 1800,
+  Min60: 3600,
+  Hour1: 3600,
+  Hour4: 14400,
+  Hour8: 28800,
+  Day1: 86400,
+};
+
 export async function fetchKlines(symbol: string, interval = 'Min1', bars = 1500): Promise<Candle[]> {
   const end = Math.floor(Date.now() / 1000);
-  const step = interval === 'Min1' ? 60 : interval === 'Min5' ? 300 : 900;
+  const step = STEP_MAP[interval] ?? 60;
   const start = end - bars * step;
   return parseKlines(await getJson(`/api/v1/contract/kline/${encodeURIComponent(symbol)}?interval=${interval}&start=${start}&end=${end}`));
 }
