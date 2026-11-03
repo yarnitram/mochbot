@@ -449,9 +449,10 @@ export class Runner extends EventEmitter {
       setup = evaluateMod01d(symbol, closed, this.store.forming(symbol), c1h, c4h, this.mod01dCfg(symbol));
       setup.strategyId = 'MOD-01D';
     } else if (strategy === 'MOD-01E') {
-      let c1h = this.htf1h.get(symbol);
-      if (!c1h || c1h.length < 10) c1h = aggregate(closed, 60);
-      setup = evaluateMod01e(symbol, closed, this.store.forming(symbol), c1h, this.mod01eCfg(symbol));
+      const cfg = this.mod01eCfg(symbol);
+      let cBias = cfg.biasTfMinutes === 240 ? this.htf4h.get(symbol) : this.htf1h.get(symbol);
+      if (!cBias || cBias.length < 10) cBias = aggregate(closed, cfg.biasTfMinutes);
+      setup = evaluateMod01e(symbol, closed, this.store.forming(symbol), cBias, cfg);
       setup.strategyId = 'MOD-01E';
     } else {
       setup = evaluate(symbol, closed, this.store.forming(symbol), this.strategyCfg(symbol));
@@ -508,10 +509,15 @@ export class Runner extends EventEmitter {
         const ltf = this.store.closed(setup.symbol);
         let htfCandles: Candle[];
         let ltfCandles: Candle[];
-        if (setup.strategyId === 'MOD-01D' || setup.strategyId === 'MOD-01E') {
+        if (setup.strategyId === 'MOD-01D') {
           htfCandles = this.htf1h.get(setup.symbol) ?? aggregate(ltf, 60);
           ltfCandles = aggregate(ltf, 5); // 5m execution
           setup.ltfMinutes = 5;
+        } else if (setup.strategyId === 'MOD-01E') {
+          const cfg = this.mod01eCfg(setup.symbol);
+          htfCandles = (cfg.biasTfMinutes === 240 ? this.htf4h.get(setup.symbol) : this.htf1h.get(setup.symbol)) ?? aggregate(ltf, cfg.biasTfMinutes);
+          ltfCandles = aggregate(ltf, cfg.entryTfMinutes);
+          setup.ltfMinutes = cfg.entryTfMinutes;
         } else {
           const mod01Cfg = this.strategyCfg(setup.symbol);
           htfCandles = aggregate(ltf, mod01Cfg.htfMinutes);

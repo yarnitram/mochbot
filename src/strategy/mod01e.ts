@@ -1,7 +1,6 @@
 import type { Candle, Direction, EntrySignal, Mod01eCfg, Setup, Stage, Zone } from '../types.js';
 import { DEFAULT_MOD01E_CFG } from '../types.js';
 import { aggregate, atr, inKillzone } from './indicators.js';
-import { suggestOrderType } from '../engine/orderType.js';
 
 export interface Mod01eScanResult {
   biasTrend: number;   // 1 = Bullish, -1 = Bearish, 0 = Neutral
@@ -49,98 +48,108 @@ function pivotLow(candles: Candle[], p: number, len: number): boolean {
 }
 
 /** Compute swing pivots and trend breaks on a candle series */
-export function computeStructure(candles: Candle[], pivotLen = 3): { trend: number; lastHigh: number | null; lastLow: number | null; lastHighTime: number | null; lastLowTime: number | null } {
-  let lastH: number | null = null;
-  let lastL: number | null = null;
-  let lastHTime: number | null = null;
-  let lastLTime: number | null = null;
+export function computeStructure(candles: Candle[], pivotLen = 5): {
+  trend: number;
+  lastHigh: number | null;
+  lastLow: number | null;
+  lastHighTime: number | null;
+  lastLowTime: number | null;
+} {
+  let swingHigh: number | null = null;
+  let swingLow: number | null = null;
+  let swingHighTime: number | null = null;
+  let swingLowTime: number | null = null;
   let trend = 0;
 
   for (let i = 0; i < candles.length; i++) {
     const p = i - pivotLen;
     if (p >= pivotLen) {
       if (pivotHigh(candles, p, pivotLen)) {
-        lastH = candles[p].h;
-        lastHTime = candles[p].t;
+        swingHigh = candles[p].h;
+        swingHighTime = candles[p].t;
       }
       if (pivotLow(candles, p, pivotLen)) {
-        lastL = candles[p].l;
-        lastLTime = candles[p].t;
+        swingLow = candles[p].l;
+        swingLowTime = candles[p].t;
       }
     }
     const c = candles[i].c;
-    if (lastH !== null && c > lastH) {
+    if (swingHigh !== null && c > swingHigh) {
       trend = 1;
-    } else if (lastL !== null && c < lastL) {
+    } else if (swingLow !== null && c < swingLow) {
       trend = -1;
     }
   }
 
-  return { trend, lastHigh: lastH, lastLow: lastL, lastHighTime: lastHTime, lastLowTime: lastLTime };
+  return { trend, lastHigh: swingHigh, lastLow: swingLow, lastHighTime: swingHighTime, lastLowTime: swingLowTime };
 }
 
-/** Calculate Fibonacci retracement level */
+/**
+ * Calculate Fibonacci retracement level:
+ * Long: 0 is broken high, 1 is impulse low. Retracement pulls back downward from 0 towards 1.
+ * Short: 0 is broken low, 1 is impulse high. Retracement pulls back upward from 0 towards 1.
+ */
 export function calcFibLevel(isLong: boolean, zero: number, one: number, ratio: number): number {
   return isLong ? zero - (zero - one) * ratio : zero + (one - zero) * ratio;
 }
 
 /**
  * Scan candles for MOD-01E structure:
- * 1H Bias + 15m Alignment + 15m CHoCH + 5m Fib Limit Entry
+ * 1H Bias + 15m Alignment + 15m CHoCH Dealing Range + 5m Fib Limit Entry
  */
 export function scanMod01e(
   ltf1m: Candle[],
   candles1h?: Candle[],
   cfg: Mod01eCfg = DEFAULT_MOD01E_CFG
 ): Mod01eScanResult {
-  const tf5m = aggregate(ltf1m, cfg.entryTfMinutes);
-  const tf15m = aggregate(ltf1m, cfg.alignTfMinutes);
-  const tf1h = candles1h && candles1h.length >= 5 ? candles1h : aggregate(ltf1m, cfg.biasTfMinutes);
+  const tfEntry = aggregate(ltf1m, cfg.entryTfMinutes);
+  const tfAlign = aggregate(ltf1m, cfg.alignTfMinutes);
+  const tfBias = candles1h && candles1h.length >= 5 ? candles1h : aggregate(ltf1m, cfg.biasTfMinutes);
 
-  const atr5mArr = atr(tf5m, 14);
-  const atr15mArr = atr(tf15m, 14);
-  const atr1hArr = atr(tf1h, 14);
+  const atrEntryArr = atr(tfEntry, 14);
+  const atrAlignArr = atr(tfAlign, 14);
+  const atrBiasArr = atr(tfBias, 14);
 
-  const atrLtf = atr5mArr[atr5mArr.length - 1] || 0;
-  const atr15m = atr15mArr[atr15mArr.length - 1] || 0;
-  const atr1h = atr1hArr[atr1hArr.length - 1] || 0;
+  const atrLtf = atrEntryArr[atrEntryArr.length - 1] || 0;
+  const atr15m = atrAlignArr[atrAlignArr.length - 1] || 0;
+  const atr1h = atrBiasArr[atrBiasArr.length - 1] || 0;
 
   // 1. Timeframe Alignment
-  const biasStruct = computeStructure(tf1h, cfg.biasPivotLen);
-  const alignStruct = computeStructure(tf15m, cfg.alignPivotLen);
+  const biasStruct = computeStructure(tfBias, cfg.biasPivotLen);
+  const alignStruct = computeStructure(tfAlign, cfg.alignPivotLen);
 
   const longAllowed = biasStruct.trend === 1 && (!cfg.requireAlignment || alignStruct.trend === 1);
   const shortAllowed = biasStruct.trend === -1 && (!cfg.requireAlignment || alignStruct.trend === -1);
 
-  // 2. Track 15m CHoCH Swings
+  // 2. Track 15m CHoCH Swings & Breakouts
   const entryLen = cfg.entryPivotLen;
   let swingH: number | null = null;
   let swingL: number | null = null;
   let swingHTime: number | null = null;
   let swingLTime: number | null = null;
-  let direction = 0;
+  let direction = 0; // 1 = broke high, -1 = broke low
 
   let activePending: Mod01eScanResult['pendingOrder'] = null;
   const signals: EntrySignal[] = [];
 
-  for (let i = 0; i < tf15m.length; i++) {
+  for (let i = 0; i < tfAlign.length; i++) {
     const p = i - entryLen;
     if (p >= entryLen) {
-      if (pivotHigh(tf15m, p, entryLen)) {
-        swingH = tf15m[p].h;
-        swingHTime = tf15m[p].t;
+      if (pivotHigh(tfAlign, p, entryLen)) {
+        swingH = tfAlign[p].h;
+        swingHTime = tfAlign[p].t;
       }
-      if (pivotLow(tf15m, p, entryLen)) {
-        swingL = tf15m[p].l;
-        swingLTime = tf15m[p].t;
+      if (pivotLow(tfAlign, p, entryLen)) {
+        swingL = tfAlign[p].l;
+        swingLTime = tfAlign[p].t;
       }
     }
 
-    const bar = tf15m[i];
-    const checkPrice = cfg.breakRule === 'Body close' ? bar.c : bar.h;
+    const bar = tfAlign[i];
+    const checkPriceHigh = cfg.breakRule === 'Body close' ? bar.c : bar.h;
     const checkPriceLow = cfg.breakRule === 'Body close' ? bar.c : bar.l;
 
-    const upBreak = swingH !== null && checkPrice > swingH;
+    const upBreak = swingH !== null && checkPriceHigh > swingH;
     const downBreak = swingL !== null && checkPriceLow < swingL;
 
     const chochUp = upBreak && direction === -1;
@@ -149,16 +158,16 @@ export function scanMod01e(
     if (upBreak) direction = 1;
     else if (downBreak) direction = -1;
 
-    // Check for new valid 15m CHoCH
+    // Check for valid CHoCH in alignment with 1H & 15m
     const isBullChoch = chochUp && longAllowed;
     const isBearChoch = chochDown && shortAllowed;
 
     if (isBullChoch || isBearChoch) {
       const isLong = isBullChoch;
-      // Lookback recent 15m bars for impulse extreme
+      // Anchor impulse extreme from recent 15m bars
       const lookback = Math.max(entryLen * 3, 6);
       const startIdx = Math.max(0, i - lookback);
-      const impulseSlice = tf15m.slice(startIdx, i + 1);
+      const impulseSlice = tfAlign.slice(startIdx, i + 1);
 
       let impulseExtreme: number;
       if (isLong) {
@@ -167,6 +176,7 @@ export function scanMod01e(
         impulseExtreme = Math.max(...impulseSlice.map(c => c.h));
       }
 
+      // Fib 0 anchors to the broken swing level; Fib 1 anchors to the impulse extreme
       const rangeZero = isLong ? (swingH ?? bar.h) : (swingL ?? bar.l);
       const rangeOne = impulseExtreme;
       const rangeSize = Math.abs(rangeZero - rangeOne);
@@ -204,15 +214,16 @@ export function scanMod01e(
     }
   }
 
-  // 3. Evaluate 5m Bars for Pending Limit Order Fill or Expiry
+  // 3. Evaluate Execution Bars for Pending Limit Order Fill or Expiry
   if (activePending) {
-    const chochTime = activePending.chochTime;
-    const pending5mBars = tf5m.filter(b => b.t >= chochTime);
+    // The limit order rests on execution bars strictly AFTER the 15m CHoCH bar has completed
+    const barCompletionTime = activePending.chochTime + cfg.alignTfMinutes * 60;
+    const pendingBars = tfEntry.filter(b => b.t >= barCompletionTime);
     let orderFilled = false;
     let orderCancelled = false;
 
-    for (let j = 0; j < pending5mBars.length; j++) {
-      const b = pending5mBars[j];
+    for (let j = 0; j < pendingBars.length; j++) {
+      const b = pendingBars[j];
 
       // Expiry check
       if (j >= cfg.orderExpiry) {
@@ -286,7 +297,7 @@ export function evaluateMod01e(
   const lastClosed = closed1m[closed1m.length - 1];
   const price = live ? live.c : lastClosed ? lastClosed.c : NaN;
   const nowSec = live ? live.t : lastClosed ? lastClosed.t : Math.floor(Date.now() / 1000);
-  const kzNow = inKillzone(nowSec);
+  const kzNow = cfg.useKillzone ? inKillzone(nowSec) : true;
 
   const base: Setup = {
     symbol,
@@ -317,17 +328,17 @@ export function evaluateMod01e(
   base.atrHtf = f(res.atr1h) ? res.atr1h : null;
   base.atrLtf = f(res.atrLtf) ? res.atrLtf : null;
 
-  // 1. ENTRY_READY: Limit order filled on 5m chart
+  // 1. Check if a recent limit order was filled on the execution timeframe
   if (res.signals.length > 0) {
     const sig = res.signals[res.signals.length - 1];
-    const isRecent = nowSec - sig.time <= cfg.entryTfMinutes * 60 * 3; // within 3 5m bars
+    const isRecent = nowSec - sig.time <= cfg.entryTfMinutes * 60 * 3; // within 3 entry bars
     if (isRecent) {
       return {
         ...base,
         stage: 'ENTRY_READY',
         direction: sig.direction,
         setupId: `01E:${sig.direction}:${sig.zoneStartTime}:${sig.time}`,
-        zone: { top: sig.entry, bottom: sig.sl, startTime: sig.zoneStartTime },
+        zone: { top: Math.max(sig.entry, sig.sl), bottom: Math.min(sig.entry, sig.sl), startTime: sig.zoneStartTime },
         entry: sig.entry,
         sl: sig.sl,
         tp1: sig.tp1,
@@ -338,29 +349,53 @@ export function evaluateMod01e(
     }
   }
 
-  // 2. ARMED: 15m CHoCH confirmed, pending Fib limit order resting on 5m
+  // 2. Check if a limit order is currently resting (ARMED) or being tapped right now
   if (res.pendingOrder) {
     const o = res.pendingOrder;
     const isLong = o.direction === 'LONG';
-    const distToLimit = Math.abs(price - o.plannedEntry);
-    const distAtr = res.atrLtf > 0 ? distToLimit / res.atrLtf : 0;
+    const completionTime = o.chochTime + cfg.alignTfMinutes * 60;
+    const barsElapsed = Math.max(0, Math.floor((nowSec - completionTime) / (cfg.entryTfMinutes * 60)));
 
-    return {
-      ...base,
-      stage: 'ARMED',
-      direction: o.direction,
-      setupId: `01E:${o.direction}:${o.chochTime}`,
-      zone: { top: o.zoneTop, bottom: o.zoneBottom, startTime: o.chochTime },
-      distanceAtr: distAtr,
-      needBreak: o.plannedEntry,
-      barsSinceTap: Math.floor((nowSec - o.chochTime) / (cfg.entryTfMinutes * 60)),
-      entry: o.plannedEntry,
-      sl: o.plannedStop,
-      tp1: o.plannedTp1,
-      tp2: o.plannedTp2,
-      orderType: 'LIMIT',
-      orderNote: `15m CHoCH confirmed ✓. Resting ${cfg.entryFib} Fib ${isLong ? 'Buy' : 'Sell'} Limit at ${o.plannedEntry.toFixed(4)}. OTE zone ${cfg.zoneNear}–${cfg.zoneFar}.`,
-    };
+    // Check if live price fills the limit right now
+    const liveFill = isLong ? price <= o.plannedEntry && price > o.plannedStop : price >= o.plannedEntry && price < o.plannedStop;
+    if (liveFill && barsElapsed <= cfg.orderExpiry) {
+      return {
+        ...base,
+        stage: 'ENTRY_READY',
+        direction: o.direction,
+        setupId: `01E:${o.direction}:${o.chochTime}:${nowSec}`,
+        zone: { top: o.zoneTop, bottom: o.zoneBottom, startTime: o.chochTime },
+        entry: o.plannedEntry,
+        sl: o.plannedStop,
+        tp1: o.plannedTp1,
+        tp2: o.plannedTp2,
+        orderType: 'LIMIT',
+        orderNote: `LIMIT RETEST FILLED (${cfg.entryFib} Fib OTE) · 1H & 15m aligned`,
+      };
+    }
+
+    // Limit order is actively resting within expiry window
+    if (barsElapsed <= cfg.orderExpiry) {
+      const distToLimit = Math.abs(price - o.plannedEntry);
+      const distAtr = res.atrLtf > 0 ? distToLimit / res.atrLtf : 0;
+
+      return {
+        ...base,
+        stage: 'ARMED',
+        direction: o.direction,
+        setupId: `01E:${o.direction}:${o.chochTime}`,
+        zone: { top: o.zoneTop, bottom: o.zoneBottom, startTime: o.chochTime },
+        distanceAtr: distAtr,
+        needBreak: o.plannedEntry,
+        barsSinceTap: barsElapsed,
+        entry: o.plannedEntry,
+        sl: o.plannedStop,
+        tp1: o.plannedTp1,
+        tp2: o.plannedTp2,
+        orderType: 'LIMIT',
+        orderNote: `15m CHoCH confirmed ✓. Resting ${cfg.entryFib} Fib ${isLong ? 'Buy' : 'Sell'} Limit at ${o.plannedEntry.toFixed(4)}. OTE zone ${cfg.zoneNear}–${cfg.zoneFar}.`,
+      };
+    }
   }
 
   // 3. WATCH: 1H & 15m alignment active, watching for 15m CHoCH break
