@@ -4,7 +4,7 @@ import type { Candle, Setup } from '../types.js';
 import { mexcLink } from '../notify/format.js';
 
 export interface LifecycleEvent {
-  type: 'tp1_hit' | 'tp2_hit' | 'sl_hit' | 'be_hit';
+  type: 'tp1_hit' | 'tp2_hit' | 'sl_hit' | 'be_hit' | 'manual_close';
   trade: TradeRow;
   price: number;
   message: string;

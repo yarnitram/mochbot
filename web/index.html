@@ -37,6 +37,7 @@
   .badge.CLOSED_TP2 { background:#14532d; color:#86efac; }
   .badge.CLOSED_BE { background:#0369a1; color:#7dd3fc; }
   .badge.CLOSED_SL { background:#7f1d1d; color:#fca5a5; }
+  .badge.CLOSED_MANUAL { background:#78350f; color:#fde68a; }
   .badge-tag { font-size:10px; padding:1px 5px; border-radius:4px; font-weight:bold; margin-right:4px; }
   .tag-pinned { background:#334155; color:#cbd5e1; }
   .tag-auto { background:#1e1b4b; color:#c7d2fe; border:1px solid #4338ca; }
@@ -153,7 +154,15 @@
 
     <!-- Active Tracked Trades Card -->
     <div class="card" style="margin-bottom:20px;">
-      <h2>Active Tracked Trades (TP1 $\rightarrow$ Break-Even $\rightarrow$ TP2)</h2>
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
+        <h2 style="margin:0;">
+          <span>Active Tracked Trades (TP1 $\rightarrow$ Break-Even $\rightarrow$ TP2)</span>
+          <small id="trades-count" class="mut" style="font-size:12px; margin-left:6px; font-weight:normal;"></small>
+        </h2>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button id="btn-clear-active-trades" onclick="openClearTradesModal()" style="display:none; padding:4px 10px; font-size:11px; background:#450a0a; border:1px solid #ef4444; color:#f87171; border-radius:4px; cursor:pointer; font-weight:600;" title="Clear or close all active tracked trades">🗑️ Clear Active Trades</button>
+        </div>
+      </div>
       <table>
         <thead>
           <tr>
@@ -170,6 +179,7 @@
             <th>TP2 (1:5)</th>
             <th>Status</th>
             <th>Chart</th>
+            <th>Action</th>
           </tr>
         </thead>
         <tbody id="trades-body"></tbody>
@@ -583,6 +593,51 @@
   </div>
 </div>
 
+<!-- Clear Active Trades Modal -->
+<div id="clear-trades-modal" class="modal" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+  <div class="card" style="width:480px; max-width:92vw; background:#161b22; border:1px solid #30363d; padding:20px;" onclick="event.stopPropagation()">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <h3 style="margin:0; font-size:16px; color:#f87171;">🗑️ Clear Active Tracked Trades</h3>
+      <button onclick="$('clear-trades-modal').style.display='none'" class="x" style="font-size:18px;">✕</button>
+    </div>
+    <p style="font-size:13px; color:#c9d1d9; margin-bottom:16px; line-height:1.5;">
+      You currently have <b id="clear-modal-trades-count" style="color:#f87171;">0</b> active tracked trade(s). Choose how you want to clear them:
+    </p>
+
+    <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:16px;">
+      <div style="background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <strong style="color:#fbbf24; font-size:13px;">Option 1: Close All (Save to History)</strong>
+          <span class="badge CLOSED_MANUAL" style="font-size:10px;">Recommended</span>
+        </div>
+        <p style="font-size:11px; color:#8b949e; margin:0 0 10px 0; line-height:1.4;">
+          Marks active trades as <code>CLOSED_MANUAL</code> at latest market prices, calculates realized P&amp;L, syncs exit to MOCHEX / EXMOCHEX, and preserves complete history in your Trade Journal.
+        </p>
+        <button id="btn-confirm-close-all" onclick="submitClearTrades('close')" style="width:100%; padding:8px 12px; font-size:12px; font-weight:600; background:#d97706; border:1px solid #f59e0b; color:white; border-radius:4px; cursor:pointer;">
+          ✓ Close All &amp; Record in History
+        </button>
+      </div>
+
+      <div style="background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <strong style="color:#f87171; font-size:13px;">Option 2: Delete All (Purge Records)</strong>
+          <span class="badge CLOSED_SL" style="font-size:10px;">Destructive</span>
+        </div>
+        <p style="font-size:11px; color:#8b949e; margin:0 0 10px 0; line-height:1.4;">
+          Permanently deletes active trade rows from SQLite database. These trades will not appear in closed trade history or performance stats.
+        </p>
+        <button id="btn-confirm-purge-all" onclick="submitClearTrades('delete')" style="width:100%; padding:8px 12px; font-size:12px; font-weight:600; background:#991b1b; border:1px solid #ef4444; color:white; border-radius:4px; cursor:pointer;">
+          ⚠ Delete All Permanently
+        </button>
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:flex-end;">
+      <button onclick="$('clear-trades-modal').style.display='none'" style="background:#21262d; border-color:#30363d; font-size:12px; padding:6px 14px;">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const $ = id => document.getElementById(id);
 const fmt = n => n == null ? '-' : (Math.abs(n) >= 100 ? n.toFixed(2) : Math.abs(n) >= 1 ? n.toFixed(4) : n.toPrecision(5));
@@ -869,6 +924,10 @@ function renderTrades() {
   const body = $('trades-body'); body.innerHTML = '';
   const trades = state.activeTrades || [];
   $('trades-empty').style.display = trades.length > 0 ? 'none' : 'block';
+  const clearBtn = $('btn-clear-active-trades');
+  const countSpan = $('trades-count');
+  if (clearBtn) clearBtn.style.display = trades.length > 0 ? 'inline-block' : 'none';
+  if (countSpan) countSpan.textContent = trades.length > 0 ? `(${trades.length} active)` : '';
   for (const t of trades) {
     const rClass = (t.currentR || 0) >= 0 ? 'long' : 'short';
     const pnlUsd = t.currentPnlUsd || 0;
@@ -896,8 +955,50 @@ function renderTrades() {
       <td>${fmt(t.tp1_price)}</td>
       <td>${fmt(t.tp2_price)}</td>
       <td><span class="badge ${t.status}">${t.status.replace('_',' ')}</span></td>
-      <td>${chartLink}</td>`;
+      <td>${chartLink}</td>
+      <td><button onclick="closeTradeRow(${t.id}, '${esc(t.symbol)}')" class="btn-del" title="Close ${esc(t.symbol)} trade manually" style="padding:2px 8px; font-size:11px; background:#21262d; color:#f87171; border:1px solid #484f58; border-radius:3px; cursor:pointer;">✕ Close</button></td>`;
     body.appendChild(tr);
+  }
+}
+
+function openClearTradesModal() {
+  const trades = state.activeTrades || [];
+  if (!trades.length) return;
+  const countEl = $('clear-modal-trades-count');
+  if (countEl) countEl.textContent = trades.length;
+  $('clear-trades-modal').style.display = 'flex';
+}
+
+async function submitClearTrades(mode) {
+  const btnClose = $('btn-confirm-close-all');
+  const btnPurge = $('btn-confirm-purge-all');
+  if (btnClose) btnClose.disabled = true;
+  if (btnPurge) btnPurge.disabled = true;
+  try {
+    const res = await fetch('/api/trades/clear', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode }),
+    });
+    const data = await res.json();
+    if (!res.ok) alert(data.error || 'Failed to clear trades');
+    $('clear-trades-modal').style.display = 'none';
+  } catch (e) {
+    alert('Error clearing trades: ' + e.message);
+  } finally {
+    if (btnClose) btnClose.disabled = false;
+    if (btnPurge) btnPurge.disabled = false;
+  }
+}
+
+async function closeTradeRow(id, symbol) {
+  if (!confirm(`Manually close active trade for ${symbol} at current market price?`)) return;
+  try {
+    const res = await fetch(`/api/trades/${id}/close`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) alert(data.error || 'Failed to close trade');
+  } catch (e) {
+    alert('Error closing trade: ' + e.message);
   }
 }
 

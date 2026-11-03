@@ -198,6 +198,24 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
         });
       }
 
+      if (path === '/api/trades/clear' && req.method === 'POST') {
+        const b = await readBody(req);
+        const purge = b.mode === 'delete' || b.mode === 'purge';
+        const result = await runner.clearAllActiveTrades(purge);
+        push('state_full', snapshot());
+        return json(res, 200, { ok: true, count: result.count });
+      }
+
+      const tradeActionMatch = path.match(/^\/api\/trades\/(\d+)(?:\/(close|delete))?$/);
+      if (tradeActionMatch && (req.method === 'POST' || req.method === 'DELETE')) {
+        const tradeId = Number(tradeActionMatch[1]);
+        const subAction = tradeActionMatch[2];
+        const isDelete = req.method === 'DELETE' || subAction === 'delete';
+        const result = await runner.closeActiveTrade(tradeId, isDelete);
+        push('state_full', snapshot());
+        return json(res, result.ok ? 200 : 400, result);
+      }
+
       // Coin Analytics & Journal
       if (path === '/api/analytics/coins' && req.method === 'GET') {
         const stratFilter = (url.searchParams.get('strategy') ?? 'ALL') as any;

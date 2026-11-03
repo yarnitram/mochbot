@@ -27,7 +27,7 @@ export interface AlertRow {
   payload: string;
 }
 
-export type TradeStatus = 'OPEN' | 'TP1_HIT' | 'CLOSED_TP2' | 'CLOSED_SL' | 'CLOSED_BE';
+export type TradeStatus = 'OPEN' | 'TP1_HIT' | 'CLOSED_TP2' | 'CLOSED_SL' | 'CLOSED_BE' | 'CLOSED_MANUAL';
 
 export interface TradeRow {
   id: number;
@@ -404,6 +404,16 @@ export class Db {
 
   getActiveTrades(): TradeRow[] {
     return this.db.prepare("SELECT * FROM trades WHERE status IN ('OPEN', 'TP1_HIT') ORDER BY opened_at DESC").all() as unknown as TradeRow[];
+  }
+
+  deleteTrade(id: number): boolean {
+    const r = this.db.prepare('DELETE FROM trades WHERE id = ?').run(id);
+    return r.changes > 0;
+  }
+
+  deleteActiveTrades(): number {
+    const r = this.db.prepare("DELETE FROM trades WHERE status IN ('OPEN', 'TP1_HIT')").run();
+    return Number(r.changes);
   }
 
   getTrade(id: number): TradeRow | undefined {

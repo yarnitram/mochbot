@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { Db } from '../src/db/index.js';
 import { LifecycleManager } from '../src/engine/lifecycle.js';
+import { Runner } from '../src/engine/runner.js';
+import { startWeb } from '../src/web/server.js';
+import { loadConfig } from '../src/config.js';
 import { computePositionSizing } from '../src/strategy/sizing.js';
 import type { Setup } from '../src/types.js';
 
@@ -159,5 +162,166 @@ describe('Trade Lifecycle & Milestones', () => {
     expect(summary.winRate).toBe(0);
     expect(summary.totalR).toBe(-1.0);
     expect(summary.totalPnlUsd).toBeCloseTo(-5.0, 1);
+  });
+
+  it('manually closing an active trade marks CLOSED_MANUAL, records realized PnL, and archives in history', async () => {
+    const db = new Db(':memory:');
+    const cfg = loadConfig({ PAPER_MODE: 'true', USE_KILLZONE: 'false' } as any);
+    const runner = new Runner({
+      cfg,
+      db,
+      feed: { subscribe: () => {}, unsubscribe: () => {} },
+      fetchKlines: async () => [],
+      fetchContracts: async () => [],
+      notifiers: [],
+      log: () => {},
+    });
+
+    const setupWithSizing: Setup = {
+      ...setupLong,
+      sizing: computePositionSizing(100, 95, 115, 125, 'LONG', 1000, 5, 50, 0.01),
+    };
+    const trade = runner.lifecycle.onEntryReady(setupWithSizing);
+    expect(trade).not.toBeNull();
+    expect(db.getActiveTrades()).toHaveLength(1);
+
+    // Mock runner market price at 110 (+2.0R gain)
+    runner.states.set('BTC_USDT', {
+      ...setupLong,
+      price: 110,
+    });
+
+    const res = await runner.closeActiveTrade(trade!.id);
+    expect(res.ok).toBe(true);
+    expect(res.trade?.status).toBe('CLOSED_MANUAL');
+    expect(res.trade?.pnl_r).toBe(2.0); // (110 - 100) / (100 - 95) = 2.0R
+    expect(res.trade?.pnl_usd).toBeCloseTo(10.0, 1); // 2.0R * $5 = $10.00
+
+    // No longer active
+    expect(db.getActiveTrades()).toHaveLength(0);
+
+    // Retained in trade history and summary
+    const history = db.getTradeHistory();
+    expect(history).toHaveLength(1);
+    expect(history[0].status).toBe('CLOSED_MANUAL');
+    expect(history[0].pnl_r).toBe(2.0);
+
+    const perf = db.getPerformanceSummary();
+    expect(perf.wins).toBe(1);
+    expect(perf.totalR).toBe(2.0);
+  });
+
+  it('permanently purging active trades deletes them from database', async () => {
+    const db = new Db(':memory:');
+    const cfg = loadConfig({ PAPER_MODE: 'true', USE_KILLZONE: 'false' } as any);
+    const runner = new Runner({
+      cfg,
+      db,
+      feed: { subscribe: () => {}, unsubscribe: () => {} },
+      fetchKlines: async () => [],
+      fetchContracts: async () => [],
+      notifiers: [],
+      log: () => {},
+    });
+
+    runner.lifecycle.onEntryReady({
+      ...setupLong,
+      setupId: 'btc-1',
+      sizing: computePositionSizing(100, 95, 115, 125, 'LONG', 1000, 5, 50, 0.01),
+    });
+    runner.lifecycle.onEntryReady({
+      ...setupLong,
+      setupId: 'btc-2',
+      entry: 200,
+      sl: 190,
+      tp1: 230,
+      tp2: 250,
+      sizing: computePositionSizing(200, 190, 230, 250, 'LONG', 1000, 5, 50, 0.01),
+    });
+
+    expect(db.getActiveTrades()).toHaveLength(2);
+
+    // Clear all with purge=true
+    const res = await runner.clearAllActiveTrades(true);
+    expect(res.count).toBe(2);
+    expect(db.getActiveTrades()).toHaveLength(0);
+    expect(db.getTradeHistory()).toHaveLength(0);
+  });
+
+  it('Runner telegram command /cleartrades clears active trades', async () => {
+    const db = new Db(':memory:');
+    const cfg = loadConfig({ PAPER_MODE: 'true', USE_KILLZONE: 'false' } as any);
+    const runner = new Runner({
+      cfg,
+      db,
+      feed: { subscribe: () => {}, unsubscribe: () => {} },
+      fetchKlines: async () => [],
+      fetchContracts: async () => [],
+      notifiers: [],
+      log: () => {},
+    });
+
+    runner.lifecycle.onEntryReady({
+      ...setupLong,
+      sizing: computePositionSizing(100, 95, 115, 125, 'LONG', 1000, 5, 50, 0.01),
+    });
+
+    const msg = await runner.handleCommand('cleartrades', []);
+    expect(msg).toContain('Cleared 1 active trades (manually closed)');
+    expect(db.getActiveTrades()).toHaveLength(0);
+  });
+
+  it('Web API: POST /api/trades/:id/close and POST /api/trades/clear endpoints operate correctly', async () => {
+    const db = new Db(':memory:');
+    const cfg = loadConfig({ PAPER_MODE: 'true', USE_KILLZONE: 'false', DASHBOARD_PASS: 'secret' } as any);
+    const runner = new Runner({
+      cfg,
+      db,
+      feed: { subscribe: () => {}, unsubscribe: () => {} },
+      fetchKlines: async () => [],
+      fetchContracts: async () => [],
+      notifiers: [],
+      log: () => {},
+    });
+
+    const t1 = runner.lifecycle.onEntryReady({
+      ...setupLong,
+      setupId: 'btc-1',
+      sizing: computePositionSizing(100, 95, 115, 125, 'LONG', 1000, 5, 50, 0.01),
+    });
+    const t2 = runner.lifecycle.onEntryReady({
+      ...setupLong,
+      setupId: 'btc-2',
+      sizing: computePositionSizing(100, 95, 115, 125, 'LONG', 1000, 5, 50, 0.01),
+    });
+
+    const server = startWeb(runner, db, cfg, '.');
+    await new Promise<void>(resolve => server.listen(0, resolve));
+    const port = (server.address() as any).port;
+    const authHeader = 'Basic ' + Buffer.from(':secret').toString('base64');
+
+    // 1. Close single trade via POST /api/trades/:id/close
+    const closeRes = await fetch(`http://127.0.0.1:${port}/api/trades/${t1!.id}/close`, {
+      method: 'POST',
+      headers: { Authorization: authHeader },
+    });
+    expect(closeRes.status).toBe(200);
+    const closeData = await closeRes.json() as any;
+    expect(closeData.ok).toBe(true);
+    expect(db.getActiveTrades()).toHaveLength(1);
+
+    // 2. Clear remaining active trades via POST /api/trades/clear
+    const clearRes = await fetch(`http://127.0.0.1:${port}/api/trades/clear`, {
+      method: 'POST',
+      headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'close' }),
+    });
+    expect(clearRes.status).toBe(200);
+    const clearData = await clearRes.json() as any;
+    expect(clearData.ok).toBe(true);
+    expect(clearData.count).toBe(1);
+    expect(db.getActiveTrades()).toHaveLength(0);
+
+    server.close();
   });
 });

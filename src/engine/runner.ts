@@ -577,12 +577,71 @@ export class Runner extends EventEmitter {
     }
   }
 
+  // ---------- active trades management ----------
+  async closeActiveTrade(id: number, deletePermanently = false): Promise<{ ok: boolean; trade?: TradeRow; error?: string }> {
+    const trade = this.d.db.getTrade(id);
+    if (!trade) return { ok: false, error: 'Trade not found' };
+    if (trade.status !== 'OPEN' && trade.status !== 'TP1_HIT') {
+      return { ok: false, error: 'Trade is not active' };
+    }
+
+    if (deletePermanently) {
+      this.d.db.deleteTrade(id);
+      this.log(`trade #${id} (${trade.symbol}) deleted permanently`);
+      this.emit('trade_deleted', { id, symbol: trade.symbol });
+      return { ok: true, trade };
+    }
+
+    const state = this.states.get(trade.symbol);
+    const currentPrice = state?.price ?? trade.entry_price;
+    const isLong = trade.direction === 'LONG';
+    const risk = Math.abs(trade.entry_price - trade.sl_price) || 1;
+    const currentR = Number((isLong ? (currentPrice - trade.entry_price) / risk : (trade.entry_price - currentPrice) / risk).toFixed(2));
+    const notional = trade.notional ?? ((trade.margin ?? 1) * (trade.leverage ?? 50));
+    const slDistPct = risk / Math.max(1e-8, trade.entry_price);
+    const currentPnlUsd = Number((currentR * (notional * slDistPct)).toFixed(2));
+
+    this.d.db.updateTradeStatus(id, 'CLOSED_MANUAL', currentR, Math.floor(Date.now() / 1000), currentPnlUsd);
+    trade.status = 'CLOSED_MANUAL';
+    trade.pnl_r = currentR;
+    trade.pnl_usd = currentPnlUsd;
+    trade.closed_at = Math.floor(Date.now() / 1000);
+
+    const closeMsg = `Trade #${id} (${trade.symbol} ${trade.direction}) manually closed at ${currentPrice} (${currentR > 0 ? '+' : ''}${currentR}R | ${currentPnlUsd >= 0 ? '+' : ''}${currentPnlUsd})`;
+    this.log(closeMsg);
+
+    try {
+      void this.mochex.closeTrade(trade, {
+        type: 'manual_close',
+        trade,
+        price: currentPrice,
+        message: closeMsg,
+      });
+    } catch (e) {
+      this.log(`mochex manual close error: ${(e as Error).message}`);
+    }
+
+    this.emit('trade_closed', { trade, manual: true });
+    return { ok: true, trade };
+  }
+
+  async clearAllActiveTrades(deletePermanently = false): Promise<{ count: number }> {
+    const active = this.d.db.getActiveTrades();
+    let count = 0;
+    for (const t of active) {
+      const res = await this.closeActiveTrade(t.id, deletePermanently);
+      if (res.ok) count++;
+    }
+    this.log(`cleared ${count} active trades (deletePermanently=${deletePermanently})`);
+    return { count };
+  }
+
   // ---------- telegram commands ----------
   async handleCommand(cmd: string, args: string[]): Promise<string> {
     switch (cmd) {
       case 'start':
       case 'help':
-        return 'Commands:\n/add SYMBOL\n/remove SYMBOL\n/list\n/status [SYMBOL]\n/trades\n/scanner on|off\n/killzone on|off\n/mute\n/unmute';
+        return 'Commands:\n/add SYMBOL\n/remove SYMBOL\n/list\n/status [SYMBOL]\n/trades\n/cleartrades [purge]\n/scanner on|off\n/killzone on|off\n/mute\n/unmute';
       case 'add': {
         if (!args[0]) return 'Usage: /add BTC_USDT';
         return (await this.addSymbol(args[0])).msg;
@@ -602,6 +661,11 @@ export class Runner extends EventEmitter {
         if (!active.length) return `${header}No currently active trades.`;
         const list = active.map(t => `${t.symbol} ${t.direction} @ ${t.entry_price} [${t.status}] (SL: ${t.sl_price})`).join('\n');
         return `${header}\nActive Trades:\n${list}`;
+      }
+      case 'cleartrades': {
+        const purge = args[0] === 'purge' || args[0] === 'delete';
+        const res = await this.clearAllActiveTrades(purge);
+        return `Cleared ${res.count} active trades (${purge ? 'purged from DB' : 'manually closed'}).`;
       }
       case 'scanner':
         if (args[0] !== 'on' && args[0] !== 'off') return 'Usage: /scanner on|off';
