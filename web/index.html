@@ -560,9 +560,16 @@ function showLightbox(url) {
 }
 
 async function api(path, opts = {}) {
-  const res = await fetch(path, { headers: { 'content-type': 'application/json' }, ...opts, body: opts.body ? JSON.stringify(opts.body) : undefined });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return res.json();
+  try {
+    const res = await fetch(path, { headers: { 'content-type': 'application/json' }, ...opts, body: opts.body ? JSON.stringify(opts.body) : undefined });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return await res.json();
+  } catch (err) {
+    if (err && err.name === 'TypeError' && String(err.message).includes('fetch')) {
+      throw new Error('Connection refused or lost. Server may be restarting or unreachable.');
+    }
+    throw err;
+  }
 }
 
 function detail(s) {
@@ -900,8 +907,6 @@ $('strategy-settings-btn').onclick = async () => {
 $('save-strategies-btn').onclick = async () => {
   try {
     const globalStrat = $('input-global-strategy').value;
-    await api('/api/settings', { method: 'POST', body: { global_strategy: globalStrat } });
-
     const mod01Cfg = {
       htfMinutes: parseInt($('input-mod01-htf').value) || 15,
       ltfMinutes: parseInt($('input-mod01-ltf').value) || 1,
@@ -910,8 +915,6 @@ $('save-strategies-btn').onclick = async () => {
       maxAgeBars: parseInt($('input-mod01-maxage').value) || 20,
       watchDistanceAtr: parseFloat($('input-mod01-watchdist').value) || 1.0,
     };
-    await api('/api/strategies/MOD-01/settings', { method: 'POST', body: mod01Cfg });
-
     const mod01dCfg = {
       swingLookback: parseInt($('input-mod01d-swing').value) || 5,
       poiLookback: parseInt($('input-mod01d-poibars').value) || 50,
@@ -923,7 +926,15 @@ $('save-strategies-btn').onclick = async () => {
       tp2Rr: parseFloat($('input-mod01d-tp2rr').value) || 5.0,
       requireFvgOrBos: $('input-mod01d-requirefvg').checked,
     };
-    await api('/api/strategies/MOD-01D/settings', { method: 'POST', body: mod01dCfg });
+
+    await api('/api/strategies/settings', {
+      method: 'POST',
+      body: {
+        globalStrategy: globalStrat,
+        mod01: mod01Cfg,
+        mod01d: mod01dCfg,
+      },
+    });
 
     $('strategy-modal').style.display = 'none';
     load();

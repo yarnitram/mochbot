@@ -46,8 +46,25 @@ async function readBody(req: IncomingMessage): Promise<any> {
 export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string) {
   const clients = new Set<ServerResponse>();
   const push = (event: string, data: unknown) => {
-    const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-    for (const c of clients) c.write(msg);
+    let msg: string;
+    try {
+      msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    } catch {
+      return;
+    }
+    for (const c of clients) {
+      try {
+        if (!c.writableEnded && c.writable) {
+          c.write(msg, err => {
+            if (err) clients.delete(c);
+          });
+        } else {
+          clients.delete(c);
+        }
+      } catch {
+        clients.delete(c);
+      }
+    }
   };
   runner.on('state', d => push('state', d));
   runner.on('alert', d => push('alert', d));
@@ -112,6 +129,21 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
             },
           ],
         });
+      }
+
+      if (path === '/api/strategies/settings' && req.method === 'POST') {
+        const b = await readBody(req);
+        if (b.globalStrategy && (b.globalStrategy === 'MOD-01' || b.globalStrategy === 'MOD-01D')) {
+          db.setGlobalStrategy(b.globalStrategy);
+        }
+        if (b.mod01 && typeof b.mod01 === 'object') {
+          db.setStrategyCfg('MOD-01', b.mod01);
+        }
+        if (b.mod01d && typeof b.mod01d === 'object') {
+          db.setStrategyCfg('MOD-01D', b.mod01d);
+        }
+        push('state_full', snapshot());
+        return json(res, 200, { ok: true });
       }
 
       const stratMatch = path.match(/^\/api\/strategies\/([A-Za-z0-9_\-]+)\/settings$/);
@@ -233,6 +265,8 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
         res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
         res.write('retry: 3000\n\n');
         clients.add(res);
+        res.on('error', () => clients.delete(res));
+        res.on('close', () => clients.delete(res));
         req.on('close', () => clients.delete(res));
         return;
       }

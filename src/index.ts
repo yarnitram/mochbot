@@ -39,12 +39,12 @@ ws.on('reconnect', () => {
 });
 ws.on('error_log', e => console.log('ws error:', (e as Error).message));
 
-ws.start();
-await runner.start();
-
 const here = dirname(fileURLToPath(import.meta.url));
 const webDir = join(here, '..', 'web');
 startWeb(runner, db, cfg, webDir);
+
+ws.start();
+await runner.start();
 
 if (telegram) telegram.poll((cmd, args) => runner.handleCommand(cmd, args), e => console.log('telegram poll error:', (e as Error).message));
 
@@ -61,3 +61,10 @@ const shutdown = () => {
 };
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+
+process.on('uncaughtException', err => {
+  console.error('[FATAL] uncaughtException:', err);
+});
+process.on('unhandledRejection', err => {
+  console.error('[FATAL] unhandledRejection:', err);
+});
