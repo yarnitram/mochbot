@@ -69,17 +69,17 @@ function renderPanelCandles(
     if (lvl.price > maxP) maxP = lvl.price;
   }
 
-  // 5% padding top and bottom
+  // 8% padding top and bottom for proper vertical breathing room
   const pDiff = maxP - minP || 1;
-  const pad = pDiff * 0.05;
+  const pad = pDiff * 0.08;
   minP -= pad;
   maxP += pad;
   const range = maxP - minP;
 
   const getY = (p: number) => y + h - ((p - minP) / range) * h;
   const step = chartW / candles.length;
-  // Large, bold candles with high contrast
-  const candleW = Math.max(6, Math.min(22, step * 0.78));
+  // Sleek, proportional TradingView candlestick width
+  const candleW = Math.max(4, Math.min(12, step * 0.68));
 
   let svg = '';
 
@@ -107,7 +107,7 @@ function renderPanelCandles(
   // --- TRADINGVIEW LONG/SHORT POSITION DRAWING BOX (Layer 2: Shaded Zones) ---
   const hasPosBox = Boolean(positionBox && positionBox.entry && positionBox.sl);
   const isLong = positionBox?.direction === 'LONG';
-  let boxX = x + Math.round(chartW * 0.42);
+  let boxX = x + Math.round(chartW * 0.48);
   let boxW = x + chartW - boxX;
   let entryY = 0;
   let slY = 0;
@@ -143,17 +143,17 @@ function renderPanelCandles(
     const c = candles[i];
     const cx = x + i * step + step / 2;
     const isUp = c.c >= c.o;
-    const color = isUp ? '#22c55e' : '#ef4444';
+    const color = isUp ? '#26a69a' : '#ef5350';
     const wickHighY = getY(c.h);
     const wickLowY = getY(c.l);
     const bodyTop = getY(Math.max(c.o, c.c));
     const bodyBottom = getY(Math.min(c.o, c.c));
-    const bodyH = Math.max(2, bodyBottom - bodyTop);
+    const bodyH = Math.max(1.5, bodyBottom - bodyTop);
 
-    // Thick crisp wick
-    svg += `<line x1="${cx.toFixed(1)}" y1="${wickHighY.toFixed(1)}" x2="${cx.toFixed(1)}" y2="${wickLowY.toFixed(1)}" stroke="${color}" stroke-width="2.0"/>`;
-    // Large bold body with subtle border
-    svg += `<rect x="${(cx - candleW / 2).toFixed(1)}" y="${bodyTop.toFixed(1)}" width="${candleW.toFixed(1)}" height="${bodyH.toFixed(1)}" fill="${color}" stroke="${isUp ? '#16a34a' : '#dc2626'}" stroke-width="0.8" rx="1"/>`;
+    // Clean TradingView wick
+    svg += `<line x1="${cx.toFixed(1)}" y1="${wickHighY.toFixed(1)}" x2="${cx.toFixed(1)}" y2="${wickLowY.toFixed(1)}" stroke="${color}" stroke-width="1.4"/>`;
+    // Sleek TradingView candle body
+    svg += `<rect x="${(cx - candleW / 2).toFixed(1)}" y="${bodyTop.toFixed(1)}" width="${candleW.toFixed(1)}" height="${bodyH.toFixed(1)}" fill="${color}" rx="0.5"/>`;
   }
 
   // --- POI BADGE (Layer 4) ---
@@ -243,7 +243,7 @@ export function generateChartSvg(symbol: string, htfCandles: Candle[], ltfCandle
   const panelHeaderH = 24; // Dedicated panel title header bar (prevents title from overlapping price levels)
   const contentW = width - margin * 2;
   const availH = height - headerHeight - margin * 2 - panelGap;
-  const htfH = Math.round(availH * 0.34);
+  const htfH = Math.round(availH * 0.38);
   const ltfH = availH - htfH;
 
   const htfLayout: PanelLayout = { x: margin, y: margin + headerHeight + panelHeaderH, w: contentW, h: htfH - panelHeaderH };
@@ -255,9 +255,9 @@ export function generateChartSvg(symbol: string, htfCandles: Candle[], ltfCandle
   const dirBorder = isLong ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)';
   const dirLabel = isLong ? 'LONG 🟢' : setup.direction === 'SHORT' ? 'SHORT 🔴' : '';
 
-  // 30 HTF candles & 36 LTF candles for large, clear, prominent candle presentation
-  const htfSlice = htfCandles.slice(-30);
-  const ltfSlice = ltfCandles.slice(-36);
+  // 50 HTF candles & 60 LTF candles for proper structural view and TradingView proportions
+  const htfSlice = htfCandles.slice(-50);
+  const ltfSlice = ltfCandles.slice(-60);
 
   const zoneInfo = setup.zone ? { top: setup.zone.top, bottom: setup.zone.bottom, isDemand: isLong } : null;
 
@@ -271,7 +271,7 @@ export function generateChartSvg(symbol: string, htfCandles: Candle[], ltfCandle
 
   const dateStr = new Date(setup.ts * 1000).toUTCString();
   const htfTitle = setup.strategyId === 'MOD-01D' ? '1H Higher Timeframe (POI Context)' : '15m Higher Timeframe (POI Context)';
-  const ltfTitle = setup.strategyId === 'MOD-01D' ? '5m Execution Timeframe (TradingView Position & Levels)' : `${setup.ltfMinutes ?? 1}m Execution Timeframe (TradingView Position & Levels)`;
+  const ltfTitle = setup.strategyId === 'MOD-01D' ? '5m Execution Timeframe (TradingView Position & Levels)' : `${setup.ltfMinutes ?? 3}m Execution Timeframe (TradingView Position & Levels)`;
 
   return `
 <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="background:#0d1117;">

@@ -80,7 +80,7 @@ export interface StrategyCfg {
 export const DEFAULT_CFG: StrategyCfg = {
   sensitivity: 'balanced',
   htfMinutes: 15,
-  ltfMinutes: 1,
+  ltfMinutes: 3,
   ltfSwingLen: 3,
   maxBarsAfterTap: 25,
   fvgAtrMult: 0.3,

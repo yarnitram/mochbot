@@ -84,9 +84,19 @@ export class Runner extends EventEmitter {
     return v === null ? true : v === '1';
   }
 
-  setMemeScanner(on: boolean) {
+  ensureAutoScanTimer() {
+    if ((this.autoScannerEnabled || this.memeScannerEnabled) && !this.autoScanTimer) {
+      this.autoScanTimer = setInterval(() => void this.runAutoScan(), 3600_000);
+    } else if (!this.autoScannerEnabled && !this.memeScannerEnabled && this.autoScanTimer) {
+      clearInterval(this.autoScanTimer);
+      this.autoScanTimer = null;
+    }
+  }
+
+  async setMemeScanner(on: boolean): Promise<string[]> {
     this.d.db.setSetting('meme_scanner', on ? '1' : '0');
-    if (on) void this.runAutoScan();
+    this.ensureAutoScanTimer();
+    return await this.runAutoScan();
   }
 
   setKillzone(on: boolean) {
@@ -95,9 +105,10 @@ export class Runner extends EventEmitter {
   setMuted(m: boolean) {
     this.d.db.setSetting('mute', m ? '1' : '0');
   }
-  setAutoScanner(on: boolean) {
+  async setAutoScanner(on: boolean): Promise<string[]> {
     this.d.db.setSetting('auto_scanner', on ? '1' : '0');
-    if (on) void this.runAutoScan();
+    this.ensureAutoScanTimer();
+    return await this.runAutoScan();
   }
 
   getStrategyForSymbol(symbol: string): StrategyId {
@@ -140,10 +151,10 @@ export class Runner extends EventEmitter {
       await this.activate(w.symbol).catch(e => this.log(`activate ${w.symbol}: ${(e as Error).message}`));
     }
 
-    // Run auto-scanner if enabled
-    if (this.autoScannerEnabled && this.d.fetchTopVolumePerps) {
+    // Run auto-scanner if either volume or meme scanner enabled
+    if ((this.autoScannerEnabled || this.memeScannerEnabled) && this.d.fetchTopVolumePerps) {
       void this.runAutoScan();
-      this.autoScanTimer = setInterval(() => void this.runAutoScan(), 3600_000);
+      this.ensureAutoScanTimer();
     }
   }
 
@@ -190,7 +201,7 @@ export class Runner extends EventEmitter {
   async runAutoScan(limit = 50): Promise<string[]> {
     try {
       this.log(`auto-scanner: fetching top volume and meme pairs from MEXC...`);
-      const topSymbols = this.d.fetchTopVolumePerps ? await this.d.fetchTopVolumePerps(limit) : [];
+      const topSymbols = (this.autoScannerEnabled && this.d.fetchTopVolumePerps) ? await this.d.fetchTopVolumePerps(limit) : [];
       const memeSymbols = (this.memeScannerEnabled && this.d.fetchTopMemePerps) ? await this.d.fetchTopMemePerps(limit) : [];
 
       const keepSet = new Set<string>([...topSymbols, ...memeSymbols]);
@@ -383,11 +394,13 @@ export class Runner extends EventEmitter {
         if (setup.strategyId === 'MOD-01D') {
           htfCandles = this.htf1h.get(setup.symbol) ?? aggregate(ltf, 60);
           ltfCandles = aggregate(ltf, 5); // 5m execution
+          setup.ltfMinutes = 5;
         } else {
           const mod01Cfg = this.strategyCfg(setup.symbol);
           htfCandles = aggregate(ltf, mod01Cfg.htfMinutes);
-          const ltfMin = mod01Cfg.ltfMinutes ?? 1;
-          ltfCandles = ltfMin > 1 ? aggregate(ltf, ltfMin) : ltf; // 1m, 3m, 5m execution
+          const ltfMin = mod01Cfg.ltfMinutes ?? 3;
+          ltfCandles = ltfMin > 1 ? aggregate(ltf, ltfMin) : ltf; // 3m default or user-configured
+          setup.ltfMinutes = ltfMin;
         }
         chartBuffer = renderChartPng(setup.symbol, htfCandles, ltfCandles, setup);
 

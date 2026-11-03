@@ -5,7 +5,7 @@ import { DEFAULT_CFG } from '../src/types.js';
 import type { StrategyCfg } from '../src/types.js';
 import { T0, expand15, invert, longScenario } from './fixtures.js';
 
-const cfg = (o: Partial<StrategyCfg> = {}): StrategyCfg => ({ ...DEFAULT_CFG, useKillzone: false, ...o });
+const cfg = (o: Partial<StrategyCfg> = {}): StrategyCfg => ({ ...DEFAULT_CFG, ltfMinutes: 1, useKillzone: false, ...o });
 
 describe('indicators', () => {
   it('aggregate rebuilds exact 15m OHLC', () => {

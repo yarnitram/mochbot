@@ -1038,12 +1038,16 @@ $('strategy-settings-btn').onclick = async () => {
 $('btn-reset-scanner').onclick = async () => {
   const btn = $('btn-reset-scanner');
   const orig = btn.innerHTML;
-  btn.innerHTML = '🔄 Re-evaluating...';
+  btn.innerHTML = '⏳ Scanning MEXC...';
   btn.disabled = true;
   try {
     const res = await api('/api/scanner/reset', { method: 'POST' });
-    btn.innerHTML = '✓ Re-evaluated (' + (res.reevaluated || 0) + ' coins)';
-    setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 2000);
+    state = await api('/api/state');
+    renderMeta();
+    renderWl();
+    renderTrades();
+    btn.innerHTML = '✓ Synced (' + (res.scannedCount || 0) + ' scanned)';
+    setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 2500);
   } catch (err) {
     btn.innerHTML = '❌ Failed';
     setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 2000);
@@ -1352,8 +1356,20 @@ $('wl').onchange = async e => {
   }
 };
 $('kz').onchange = async () => { state = await api('/api/settings', { method: 'POST', body: { killzone: $('kz').checked } }); renderMeta(); };
-$('scanner').onchange = async () => { state = await api('/api/settings', { method: 'POST', body: { auto_scanner: $('scanner').checked } }); renderMeta(); };
-if ($('meme-scanner')) $('meme-scanner').onchange = async () => { state = await api('/api/settings', { method: 'POST', body: { meme_scanner: $('meme-scanner').checked } }); renderMeta(); };
+$('scanner').onchange = async () => {
+  $('scanner').disabled = true;
+  state = await api('/api/settings', { method: 'POST', body: { auto_scanner: $('scanner').checked } });
+  renderMeta();
+  renderWl();
+  $('scanner').disabled = false;
+};
+if ($('meme-scanner')) $('meme-scanner').onchange = async () => {
+  $('meme-scanner').disabled = true;
+  state = await api('/api/settings', { method: 'POST', body: { meme_scanner: $('meme-scanner').checked } });
+  renderMeta();
+  renderWl();
+  $('meme-scanner').disabled = false;
+};
 $('mute').onchange = async () => { state = await api('/api/settings', { method: 'POST', body: { muted: $('mute').checked } }); renderMeta(); };
 
 load().then(loadAlerts).then(connect).then(handleRoute);
