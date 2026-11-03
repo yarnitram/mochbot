@@ -39,6 +39,7 @@ export interface TradeRow {
   closed_at: number | null;
   pnl_r: number | null;
   setup_id: string | null;
+  chart_file: string | null;
 }
 
 export interface PerformanceSummary {
@@ -48,6 +49,22 @@ export interface PerformanceSummary {
   losses: number;
   winRate: number;
   totalR: number;
+}
+
+export interface CoinStats {
+  symbol: string;
+  totalTrades: number;
+  closedTrades: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  totalR: number;
+  avgR: number;
+  activeTrades: number;
+  totalAlerts: number;
+  lastActive: number;
+  isWatching: boolean;
+  isAuto: boolean;
 }
 
 // loaded via require so bundlers/test runners that do not know node:sqlite do not choke on it
@@ -80,6 +97,7 @@ export class Db {
         payload TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS alerts_ts ON alerts(ts DESC);
+      CREATE INDEX IF NOT EXISTS alerts_sym ON alerts(symbol);
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 
       CREATE TABLE IF NOT EXISTS trades (
@@ -94,17 +112,20 @@ export class Db {
         opened_at INTEGER NOT NULL,
         closed_at INTEGER,
         pnl_r REAL,
-        setup_id TEXT UNIQUE
+        setup_id TEXT UNIQUE,
+        chart_file TEXT
       );
       CREATE INDEX IF NOT EXISTS trades_status ON trades(status);
+      CREATE INDEX IF NOT EXISTS trades_symbol ON trades(symbol);
     `);
 
-    // Safe migration for existing databases missing is_auto column
+    // Safe migration for existing databases
     try {
       this.db.exec(`ALTER TABLE watchlist ADD COLUMN is_auto INTEGER NOT NULL DEFAULT 0;`);
-    } catch {
-      // column already exists
-    }
+    } catch {}
+    try {
+      this.db.exec(`ALTER TABLE trades ADD COLUMN chart_file TEXT;`);
+    } catch {}
   }
 
   // ---------- Watchlist ----------
@@ -115,7 +136,6 @@ export class Db {
   addWatch(symbol: string, isAuto = false): boolean {
     const existing = this.db.prepare('SELECT symbol, is_auto FROM watchlist WHERE symbol = ?').get(symbol) as { symbol: string; is_auto: number } | undefined;
     if (existing) {
-      // If user manually adds an auto-scanned symbol, promote it to manual (pinned)
       if (!isAuto && existing.is_auto === 1) {
         this.db.prepare('UPDATE watchlist SET is_auto = 0 WHERE symbol = ?').run(symbol);
         return true;
@@ -187,14 +207,19 @@ export class Db {
     tp1_price: number;
     tp2_price: number;
     setup_id?: string | null;
+    chart_file?: string | null;
     opened_at?: number;
   }): number {
     const now = trade.opened_at ?? Math.floor(Date.now() / 1000);
     const r = this.db
-      .prepare(`INSERT INTO trades (symbol, direction, entry_price, sl_price, tp1_price, tp2_price, status, opened_at, setup_id)
-                VALUES (?, ?, ?, ?, ?, ?, 'OPEN', ?, ?)`)
-      .run(trade.symbol, trade.direction, trade.entry_price, trade.sl_price, trade.tp1_price, trade.tp2_price, now, trade.setup_id ?? null);
+      .prepare(`INSERT INTO trades (symbol, direction, entry_price, sl_price, tp1_price, tp2_price, status, opened_at, setup_id, chart_file)
+                VALUES (?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?)`)
+      .run(trade.symbol, trade.direction, trade.entry_price, trade.sl_price, trade.tp1_price, trade.tp2_price, now, trade.setup_id ?? null, trade.chart_file ?? null);
     return Number(r.lastInsertRowid);
+  }
+
+  setTradeChart(id: number, chartFile: string): void {
+    this.db.prepare('UPDATE trades SET chart_file = ? WHERE id = ?').run(chartFile, id);
   }
 
   updateTradeStatus(id: number, status: TradeStatus, pnlR?: number, closedAt?: number): void {
@@ -246,6 +271,101 @@ export class Db {
       losses,
       winRate: Number(winRate.toFixed(1)),
       totalR: Number(totalR.toFixed(2)),
+    };
+  }
+
+  // ---------- Coin Analytics & Journal ----------
+  getCoinAnalytics(): CoinStats[] {
+    const symRows = this.db
+      .prepare(
+        `SELECT DISTINCT symbol FROM (
+           SELECT symbol FROM watchlist
+           UNION
+           SELECT symbol FROM trades
+           UNION
+           SELECT symbol FROM alerts
+         ) ORDER BY symbol ASC`
+      )
+      .all() as unknown as { symbol: string }[];
+
+    const watchMap = new Map<string, { is_auto: number }>();
+    for (const w of this.listWatch()) {
+      watchMap.set(w.symbol, { is_auto: w.is_auto });
+    }
+
+    const out: CoinStats[] = [];
+
+    for (const { symbol } of symRows) {
+      const trades = this.db.prepare('SELECT status, pnl_r, opened_at FROM trades WHERE symbol = ?').all(symbol) as unknown as {
+        status: TradeStatus;
+        pnl_r: number | null;
+        opened_at: number;
+      }[];
+
+      const alertStats = this.db.prepare('SELECT COUNT(*) as c, MAX(ts) as maxTs FROM alerts WHERE symbol = ?').get(symbol) as unknown as {
+        c: number;
+        maxTs: number | null;
+      };
+
+      let wins = 0;
+      let losses = 0;
+      let totalR = 0;
+      let activeTrades = 0;
+      let maxTradeTs = 0;
+
+      for (const t of trades) {
+        if (t.opened_at > maxTradeTs) maxTradeTs = t.opened_at;
+        if (t.status === 'OPEN' || t.status === 'TP1_HIT') {
+          activeTrades++;
+        } else {
+          const pnl = t.pnl_r ?? 0;
+          totalR += pnl;
+          if (pnl > 0) wins++;
+          else losses++;
+        }
+      }
+
+      const closedTrades = wins + losses;
+      const winRate = closedTrades > 0 ? (wins / closedTrades) * 100 : 0;
+      const avgR = closedTrades > 0 ? totalR / closedTrades : 0;
+      const lastActive = Math.max(maxTradeTs, alertStats?.maxTs ?? 0);
+      const isWatching = watchMap.has(symbol);
+      const isAuto = watchMap.get(symbol)?.is_auto === 1;
+
+      out.push({
+        symbol,
+        totalTrades: trades.length,
+        closedTrades,
+        wins,
+        losses,
+        winRate: Number(winRate.toFixed(1)),
+        totalR: Number(totalR.toFixed(2)),
+        avgR: Number(avgR.toFixed(2)),
+        activeTrades,
+        totalAlerts: alertStats?.c ?? 0,
+        lastActive,
+        isWatching,
+        isAuto,
+      });
+    }
+
+    // Sort by totalTrades DESC, then totalR DESC, then symbol ASC
+    return out.sort((a, b) => b.totalTrades - a.totalTrades || b.totalR - a.totalR || a.symbol.localeCompare(b.symbol));
+  }
+
+  getCoinJournal(symbol: string): {
+    stats: CoinStats | null;
+    trades: TradeRow[];
+    alerts: AlertRow[];
+  } {
+    const analytics = this.getCoinAnalytics().find(c => c.symbol === symbol) ?? null;
+    const trades = this.db.prepare('SELECT * FROM trades WHERE symbol = ? ORDER BY opened_at DESC, id DESC').all(symbol) as unknown as TradeRow[];
+    const alerts = this.db.prepare('SELECT * FROM alerts WHERE symbol = ? ORDER BY ts DESC, id DESC LIMIT 200').all(symbol) as unknown as AlertRow[];
+
+    return {
+      stats: analytics,
+      trades,
+      alerts,
     };
   }
 

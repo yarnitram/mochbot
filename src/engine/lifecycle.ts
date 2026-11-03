@@ -27,10 +27,16 @@ export class LifecycleManager extends EventEmitter {
   /**
    * Called when an ENTRY_READY alert fires to create a tracked trade in the database.
    */
-  onEntryReady(setup: Setup): TradeRow | null {
+  onEntryReady(setup: Setup, chartFile?: string | null): TradeRow | null {
     if (!setup.entry || !setup.sl || !setup.tp1 || !setup.tp2 || !setup.direction) return null;
     const existing = this.db.getActiveTrades().find(t => t.symbol === setup.symbol && t.setup_id === setup.setupId);
-    if (existing) return existing;
+    if (existing) {
+      if (chartFile && !existing.chart_file) {
+        this.db.setTradeChart(existing.id, chartFile);
+        existing.chart_file = chartFile;
+      }
+      return existing;
+    }
 
     const id = this.db.createTrade({
       symbol: setup.symbol,
@@ -40,6 +46,7 @@ export class LifecycleManager extends EventEmitter {
       tp1_price: setup.tp1,
       tp2_price: setup.tp2,
       setup_id: setup.setupId,
+      chart_file: chartFile ?? null,
       opened_at: setup.ts,
     });
 
@@ -56,6 +63,7 @@ export class LifecycleManager extends EventEmitter {
       closed_at: null,
       pnl_r: null,
       setup_id: setup.setupId,
+      chart_file: chartFile ?? null,
     };
 
     this.emit('trade_opened', trade);

@@ -6,7 +6,14 @@ import type { Runner } from '../engine/runner.js';
 import type { Db } from '../db/index.js';
 import type { AppConfig } from '../config.js';
 
-const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' };
+const MIME: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.json': 'application/json',
+};
 
 function authOk(req: IncomingMessage, password: string | null): boolean {
   if (!password) return true;
@@ -61,7 +68,12 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
       const isLong = t.direction === 'LONG';
       const risk = Math.abs(t.entry_price - t.sl_price) || 1;
       const currentR = isLong ? (currentPrice - t.entry_price) / risk : (t.entry_price - currentPrice) / risk;
-      return { ...t, currentPrice, currentR: Number(currentR.toFixed(2)) };
+      return {
+        ...t,
+        currentPrice,
+        currentR: Number(currentR.toFixed(2)),
+        chartUrl: t.chart_file ? `/api/charts/${t.chart_file}` : null,
+      };
     }),
     watchlist: db.listWatch().map(w => ({ ...w, state: runner.states.get(w.symbol) ?? null })),
   });
@@ -81,11 +93,67 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
       }
       if (path === '/api/trades' && req.method === 'GET') {
         return json(res, 200, {
-          active: db.getActiveTrades(),
-          history: db.getTradeHistory(50),
+          active: db.getActiveTrades().map(t => ({
+            ...t,
+            chartUrl: t.chart_file ? `/api/charts/${t.chart_file}` : null,
+          })),
+          history: db.getTradeHistory(50).map(t => ({
+            ...t,
+            chartUrl: t.chart_file ? `/api/charts/${t.chart_file}` : null,
+          })),
           performance: db.getPerformanceSummary(),
         });
       }
+
+      // Coin Analytics & Journal
+      if (path === '/api/analytics/coins' && req.method === 'GET') {
+        const list = db.getCoinAnalytics().map(c => ({
+          ...c,
+          currentStage: runner.states.get(c.symbol)?.stage ?? 'IDLE',
+          currentPrice: runner.states.get(c.symbol)?.price ?? null,
+        }));
+        return json(res, 200, list);
+      }
+
+      const journalMatch = path.match(/^\/api\/journal\/([A-Za-z0-9_\-]+)$/);
+      if (journalMatch && req.method === 'GET') {
+        const sym = runner.normalize(journalMatch[1]);
+        const data = db.getCoinJournal(sym);
+        const enrichedTrades = data.trades.map(t => ({
+          ...t,
+          chartUrl: t.chart_file ? `/api/charts/${t.chart_file}` : null,
+        }));
+        return json(res, 200, {
+          symbol: sym,
+          stats: data.stats
+            ? {
+                ...data.stats,
+                currentStage: runner.states.get(sym)?.stage ?? 'IDLE',
+                currentPrice: runner.states.get(sym)?.price ?? null,
+              }
+            : null,
+          trades: enrichedTrades,
+          alerts: data.alerts.map(a => ({ ...a, payload: JSON.parse(a.payload) })),
+        });
+      }
+
+      // Chart image serving
+      const chartMatch = path.match(/^\/api\/charts\/([A-Za-z0-9_\-\.]+\.png)$/);
+      if (chartMatch && req.method === 'GET') {
+        const filename = chartMatch[1];
+        if (filename.includes('..') || !runner.chartsDir) return json(res, 400, { error: 'invalid chart path' });
+        try {
+          const img = await readFile(join(runner.chartsDir, filename));
+          res.writeHead(200, {
+            'content-type': 'image/png',
+            'cache-control': 'public, max-age=86400',
+          });
+          return res.end(img);
+        } catch {
+          return json(res, 404, { error: 'chart not found' });
+        }
+      }
+
       if (path === '/api/symbols' && req.method === 'GET') {
         const q = (url.searchParams.get('q') ?? '').toUpperCase();
         const list = runner.contracts.filter(c => !q || c.symbol.includes(q)).slice(0, 30).map(c => c.symbol);

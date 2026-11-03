@@ -5,16 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mochbot</title>
 <style>
-  :root { --bg:#0e1116; --card:#161b22; --line:#262d38; --txt:#e6edf3; --mut:#8b98a8; --blue:#3b82f6; --amber:#f59e0b; --green:#22c55e; --red:#ef4444; }
+  :root { --bg:#0e1116; --card:#161b22; --line:#262d38; --txt:#e6edf3; --mut:#8b98a8; --blue:#3b82f6; --amber:#f59e0b; --green:#22c55e; --red:#ef4444; --indigo:#6366f1; }
   * { box-sizing: border-box; }
   body { margin:0; font:14px/1.45 system-ui,Segoe UI,sans-serif; background:var(--bg); color:var(--txt); }
   header { display:flex; gap:10px; align-items:center; padding:12px 20px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
-  h1 { font-size:17px; margin:0; margin-right:auto; letter-spacing:-.01em; }
+  h1 { font-size:17px; margin:0; margin-right:12px; letter-spacing:-.01em; }
+  
+  /* Navigation Tabs */
+  .nav-tabs { display:flex; gap:6px; margin-right:auto; }
+  .nav-btn { background:#161b22; border:1px solid var(--line); color:var(--mut); padding:5px 12px; border-radius:6px; font-weight:600; font-size:12px; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:5px; }
+  .nav-btn:hover { color:var(--txt); border-color:#38444d; }
+  .nav-btn.active { background:#21262d; color:#fff; border-color:var(--blue); }
+
   .pill { padding:3px 10px; border-radius:99px; font-size:12px; border:1px solid var(--line); color:var(--mut); display:inline-flex; align-items:center; gap:5px; cursor:pointer; }
   .pill input { cursor:pointer; margin:0; }
   .pill.paper { color:var(--amber); border-color:var(--amber); }
   .pill.live { color:var(--green); border-color:var(--green); }
-  main { padding:20px; max-width:1200px; margin:auto; display:grid; gap:20px; }
+  main { padding:20px; max-width:1240px; margin:auto; display:grid; gap:20px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
   h2 { font-size:13px; margin:0 0 10px; color:var(--mut); font-weight:600; text-transform:uppercase; letter-spacing:.05em; display:flex; justify-content:space-between; align-items:center; }
   table { width:100%; border-collapse:collapse; }
@@ -33,6 +40,7 @@
   .badge-tag { font-size:10px; padding:1px 5px; border-radius:4px; font-weight:bold; margin-right:4px; }
   .tag-pinned { background:#334155; color:#cbd5e1; }
   .tag-auto { background:#1e1b4b; color:#c7d2fe; border:1px solid #4338ca; }
+  .tag-inactive { background:#1f2937; color:#6b7280; }
   .long { color:var(--green); font-weight:600; } .short { color:var(--red); font-weight:600; }
   button, input, select { background:#0b0f14; color:var(--txt); border:1px solid var(--line); border-radius:6px; padding:6px 10px; font:inherit; }
   button { cursor:pointer; } button:hover { border-color:var(--blue); }
@@ -43,8 +51,10 @@
   .mut { color:var(--mut); } small { color:var(--mut); }
   .x { color:var(--red); background:none; border:none; padding:2px 6px; }
   .btn-test { padding:2px 8px; font-size:11px; }
+  .coin-link { color:#58a6ff; font-weight:bold; text-decoration:none; cursor:pointer; }
+  .coin-link:hover { text-decoration:underline; }
 
-  /* Audio Siren Flashing Banner */
+  /* Emergency Flashing Siren Banner */
   .alarm-banner {
     background:#7f1d1d; border:1px solid var(--red); color:#fff; border-radius:8px; padding:12px 18px;
     display:flex; align-items:center; justify-content:space-between; animation:banner-glow 1s infinite alternate;
@@ -58,11 +68,27 @@
   .stat-box { background:#0b0f14; border:1px solid var(--line); border-radius:8px; padding:10px 14px; }
   .stat-val { font-size:20px; font-weight:bold; margin-top:4px; }
   .stat-val.pos { color:var(--green); } .stat-val.neg { color:var(--red); }
+
+  /* Gallery Grid */
+  .chart-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); gap:16px; margin-top:12px; }
+  .chart-card { background:#0b0f14; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .chart-card-header { padding:8px 12px; display:flex; justify-content:space-between; align-items:center; background:#161b22; border-bottom:1px solid var(--line); }
+  .chart-img { width:100%; height:auto; display:block; cursor:pointer; }
+  .chart-img:hover { opacity:0.95; }
+
+  /* Lightbox Modal */
+  .modal { position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:100; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .modal img { max-width:95vw; max-height:90vh; border-radius:6px; box-shadow:0 0 24px rgba(0,0,0,0.9); }
 </style>
 </head>
 <body>
 <header>
   <h1>Mochbot</h1>
+  <div class="nav-tabs">
+    <button id="nav-scanner" class="nav-btn active">📡 Live Scanner</button>
+    <button id="nav-analytics" class="nav-btn">📊 Coin Analytics</button>
+    <button id="nav-journal" class="nav-btn" style="display:none;">📔 Journal</button>
+  </div>
   <span id="mode" class="pill">-</span>
   <span id="chan" class="pill">-</span>
   <label class="pill" title="Filter entries to London (07-11 UTC) and NY (13-17 UTC)"><input type="checkbox" id="kz"> Killzones</label>
@@ -72,8 +98,9 @@
   <label class="pill"><input type="checkbox" id="mute"> Mute</label>
   <span id="conn" class="pill">connecting</span>
 </header>
+
 <main>
-  <!-- Interactive Emergency Alarm Banner -->
+  <!-- Emergency Alarm Banner -->
   <div id="alarm-banner" class="alarm-banner" hidden>
     <div>
       <span style="font-size:16px; margin-right:8px;">🚨</span>
@@ -82,75 +109,180 @@
     <button id="silence-btn" class="alarm-btn">🔕 Silence Alarm</button>
   </div>
 
-  <!-- Performance Summary Card -->
-  <div class="card">
-    <h2>Performance Summary (Phantom SMC MOD-01)</h2>
-    <div class="stat-grid">
-      <div class="stat-box">
-        <small class="mut">Win Rate</small>
-        <div id="stat-wr" class="stat-val pos">0%</div>
+  <!-- VIEW 1: LIVE SCANNER & WATCHLIST -->
+  <div id="view-scanner" class="view-pane">
+    <div class="card" style="margin-bottom:20px;">
+      <h2>Performance Summary (Phantom SMC MOD-01)</h2>
+      <div class="stat-grid">
+        <div class="stat-box">
+          <small class="mut">Win Rate</small>
+          <div id="stat-wr" class="stat-val pos">0%</div>
+        </div>
+        <div class="stat-box">
+          <small class="mut">Total Realized R</small>
+          <div id="stat-r" class="stat-val pos">+0.00 R</div>
+        </div>
+        <div class="stat-box">
+          <small class="mut">Closed Trades</small>
+          <div id="stat-closed" class="stat-val">0</div>
+        </div>
+        <div class="stat-box">
+          <small class="mut">Active Open Trades</small>
+          <div id="stat-open" class="stat-val">0</div>
+        </div>
       </div>
-      <div class="stat-box">
-        <small class="mut">Total Realized R</small>
-        <div id="stat-r" class="stat-val pos">+0.00 R</div>
+    </div>
+
+    <!-- Active Tracked Trades Card -->
+    <div class="card" style="margin-bottom:20px;">
+      <h2>Active Tracked Trades (TP1 $\rightarrow$ Break-Even $\rightarrow$ TP2)</h2>
+      <table>
+        <thead><tr><th>Symbol</th><th>Dir</th><th>Entry</th><th>Price</th><th>Live R</th><th>SL (BE)</th><th>TP1 (1:3)</th><th>TP2 (1:5)</th><th>Status</th><th>Chart</th></tr></thead>
+        <tbody id="trades-body"></tbody>
+      </table>
+      <small id="trades-empty" class="mut" style="display:block; padding:8px 0;">No active open trades currently tracked.</small>
+    </div>
+
+    <!-- Watchlist Card -->
+    <div class="card" style="margin-bottom:20px;">
+      <h2>
+        <span>Watchlist &amp; Scanner Feed</span>
+        <small id="wl-count" class="mut"></small>
+      </h2>
+      <div class="row" style="margin-bottom:12px;">
+        <div class="sugg"><input id="q" placeholder="Pin coin (e.g. BTC)" autocomplete="off"><div id="sugg" hidden></div></div>
+        <button id="add">Pin to Watchlist</button><span id="msg" class="mut"></span>
       </div>
-      <div class="stat-box">
-        <small class="mut">Closed Trades</small>
-        <div id="stat-closed" class="stat-val">0</div>
-      </div>
-      <div class="stat-box">
-        <small class="mut">Active Open Trades</small>
-        <div id="stat-open" class="stat-val">0</div>
-      </div>
+      <table>
+        <thead><tr><th>Type</th><th>Symbol</th><th>Stage</th><th>Dir</th><th>Price</th><th>Zone</th><th>Detail</th><th>Killzone</th><th></th></tr></thead>
+        <tbody id="wl"></tbody>
+      </table>
+      <small id="empty" hidden>No coins yet. Pin one above or enable Auto-Scanner.</small>
+    </div>
+
+    <!-- Recent Alerts Card -->
+    <div class="card">
+      <h2>Recent Alerts &amp; Trade Milestones</h2>
+      <table>
+        <thead><tr><th>Time</th><th>Symbol</th><th>Stage</th><th>Dir</th><th>Entry / SL / TP1 / TP2</th><th>Order / Note</th><th>Sent</th></tr></thead>
+        <tbody id="al"></tbody>
+      </table>
     </div>
   </div>
 
-  <!-- Active Tracked Trades Card -->
-  <div class="card">
-    <h2>Active Tracked Trades (TP1 $\rightarrow$ Break-Even $\rightarrow$ TP2)</h2>
-    <table>
-      <thead><tr><th>Symbol</th><th>Dir</th><th>Entry</th><th>Price</th><th>Live R</th><th>SL (BE)</th><th>TP1 (1:3)</th><th>TP2 (1:5)</th><th>Status</th></tr></thead>
-      <tbody id="trades-body"></tbody>
-    </table>
-    <small id="trades-empty" class="mut" style="display:block; padding:8px 0;">No active open trades currently tracked.</small>
-  </div>
-
-  <!-- Watchlist Card -->
-  <div class="card">
-    <h2>
-      <span>Watchlist &amp; Scanner Feed</span>
-      <small id="wl-count" class="mut"></small>
-    </h2>
-    <div class="row" style="margin-bottom:12px;">
-      <div class="sugg"><input id="q" placeholder="Pin coin (e.g. BTC)" autocomplete="off"><div id="sugg" hidden></div></div>
-      <button id="add">Pin to Watchlist</button><span id="msg" class="mut"></span>
+  <!-- VIEW 2: COIN ANALYTICS HUB -->
+  <div id="view-analytics" class="view-pane" style="display:none;">
+    <div class="card">
+      <h2>
+        <span>Coin Analytics &amp; Win Rates Directory</span>
+        <div class="row">
+          <input id="filter-coin" placeholder="Filter by symbol..." style="padding:4px 8px; font-size:12px;">
+          <select id="filter-type" style="padding:4px 8px; font-size:12px;">
+            <option value="all">All Coins</option>
+            <option value="watching">Active Watchlist Only</option>
+            <option value="trades">Traded Only</option>
+          </select>
+        </div>
+      </h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Status</th>
+            <th>Stage</th>
+            <th>Trades</th>
+            <th>Record (W/L)</th>
+            <th>Win Rate</th>
+            <th>Total R</th>
+            <th>Avg R</th>
+            <th>Setups</th>
+            <th>Last Active</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="analytics-tbody"></tbody>
+      </table>
+      <small id="analytics-empty" class="mut" style="display:block; padding:8px 0;" hidden>No coins match the current filter.</small>
     </div>
-    <table>
-      <thead><tr><th>Type</th><th>Symbol</th><th>Stage</th><th>Dir</th><th>Price</th><th>Zone</th><th>Detail</th><th>Killzone</th><th></th></tr></thead>
-      <tbody id="wl"></tbody>
-    </table>
-    <small id="empty" hidden>No coins yet. Pin one above or enable Auto-Scanner.</small>
   </div>
 
-  <!-- Recent Alerts & Milestones Card -->
-  <div class="card">
-    <h2>Recent Alerts &amp; Trade Milestones</h2>
-    <table>
-      <thead><tr><th>Time</th><th>Symbol</th><th>Stage</th><th>Dir</th><th>Entry / SL / TP1 / TP2</th><th>Order / Note</th><th>Sent</th></tr></thead>
-      <tbody id="al"></tbody>
-    </table>
+  <!-- VIEW 3: COIN JOURNAL & CHART GALLERY -->
+  <div id="view-journal" class="view-pane" style="display:none;">
+    <div class="card" style="margin-bottom:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+        <div>
+          <button id="journal-back" style="margin-bottom:8px; padding:3px 8px; font-size:11px;">← Back to Analytics</button>
+          <h2 style="font-size:22px; color:#f0f6fc; margin:0 0 4px; letter-spacing:0;" id="journal-symbol">BTC_USDT</h2>
+          <div id="journal-meta" class="mut" style="font-size:13px;"></div>
+        </div>
+        <div id="journal-stats" class="row"></div>
+      </div>
+    </div>
+
+    <!-- Visual Chart Snapshots Gallery -->
+    <div class="card" style="margin-bottom:20px;">
+      <h2>Visual Chart Snapshots (15m POI + 1m CHoCH Break)</h2>
+      <div id="gallery-grid" class="chart-grid"></div>
+      <small id="gallery-empty" class="mut" style="display:block; padding:8px 0;">No visual chart snapshots saved for this coin yet (generated on ENTRY READY).</small>
+    </div>
+
+    <!-- Coin Trade History Table -->
+    <div class="card" style="margin-bottom:20px;">
+      <h2>Trade Execution History</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Opened Time</th>
+            <th>Dir</th>
+            <th>Entry</th>
+            <th>SL</th>
+            <th>TP1 (1:3)</th>
+            <th>TP2 (1:5)</th>
+            <th>Outcome Status</th>
+            <th>PnL (R)</th>
+            <th>Closed Time</th>
+          </tr>
+        </thead>
+        <tbody id="journal-trades-tbody"></tbody>
+      </table>
+      <small id="journal-trades-empty" class="mut" style="display:block; padding:8px 0;">No closed trades recorded for this coin yet.</small>
+    </div>
+
+    <!-- Coin Stage Audit Trail -->
+    <div class="card">
+      <h2>Stage Transitions &amp; Alerts Audit Trail</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Stage</th>
+            <th>Price</th>
+            <th>Details / Break Level</th>
+          </tr>
+        </thead>
+        <tbody id="journal-alerts-tbody"></tbody>
+      </table>
+      <small id="journal-alerts-empty" class="mut" style="display:block; padding:8px 0;">No alerts recorded for this coin.</small>
+    </div>
   </div>
 </main>
+
+<!-- Lightbox Modal for Full Chart Images -->
+<div id="lightbox" class="modal" style="display:none;" onclick="this.style.display='none'">
+  <img id="lightbox-img" src="" alt="Full Chart">
+</div>
 
 <script>
 const $ = id => document.getElementById(id);
 const fmt = n => n == null ? '-' : (Math.abs(n) >= 100 ? n.toFixed(2) : Math.abs(n) >= 1 ? n.toFixed(4) : n.toPrecision(5));
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let state = { watchlist: [], activeTrades: [], performance: {} };
+let analyticsData = [];
+let currentJournalSymbol = null;
 
-// Web Audio API Synthesizer
+// Audio Synthesizer
 let audioCtx = null;
-let sirenOsc1 = null, sirenOsc2 = null, sirenInterval = null;
+let sirenOsc1 = null, sirenInterval = null;
 
 function getAudioCtx() {
   if (!audioCtx) {
@@ -166,16 +298,11 @@ function playChime() {
   const ctx = getAudioCtx();
   if (!ctx) return;
   const now = ctx.currentTime;
-  const osc1 = ctx.createOscillator();
-  const osc2 = ctx.createOscillator();
-  const gain = ctx.createGain();
-
-  osc1.type = 'sine'; osc1.frequency.setValueAtTime(587.33, now); // D5
-  osc2.type = 'sine'; osc2.frequency.setValueAtTime(880.00, now + 0.15); // A5
-
+  const osc1 = ctx.createOscillator(), osc2 = ctx.createOscillator(), gain = ctx.createGain();
+  osc1.type = 'sine'; osc1.frequency.setValueAtTime(587.33, now);
+  osc2.type = 'sine'; osc2.frequency.setValueAtTime(880.00, now + 0.15);
   gain.gain.setValueAtTime(0.2, now);
   gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
-
   osc1.connect(gain); osc2.connect(gain); gain.connect(ctx.destination);
   osc1.start(now); osc1.stop(now + 0.15);
   osc2.start(now + 0.15); osc2.stop(now + 0.6);
@@ -190,20 +317,14 @@ function startSiren(title) {
   stopSiren(false);
   const ctx = getAudioCtx();
   if (!ctx) return;
-
   const now = ctx.currentTime;
   sirenOsc1 = ctx.createOscillator();
-  sirenOsc2 = ctx.createOscillator();
   const gain = ctx.createGain();
   gain.gain.setValueAtTime(0.25, now);
-
   sirenOsc1.type = 'sawtooth';
   sirenOsc1.frequency.setValueAtTime(700, now);
-
-  sirenOsc1.connect(gain);
-  gain.connect(ctx.destination);
+  sirenOsc1.connect(gain); gain.connect(ctx.destination);
   sirenOsc1.start(now);
-
   let high = true;
   sirenInterval = setInterval(() => {
     if (!sirenOsc1) return;
@@ -215,12 +336,40 @@ function startSiren(title) {
 function stopSiren(hideBanner = true) {
   if (sirenInterval) { clearInterval(sirenInterval); sirenInterval = null; }
   if (sirenOsc1) { try { sirenOsc1.stop(); sirenOsc1.disconnect(); } catch{} sirenOsc1 = null; }
-  if (sirenOsc2) { try { sirenOsc2.stop(); sirenOsc2.disconnect(); } catch{} sirenOsc2 = null; }
   if (hideBanner) $('alarm-banner').hidden = true;
 }
 
 $('silence-btn').onclick = () => stopSiren(true);
 $('test-audio').onclick = () => { playChime(); setTimeout(() => startSiren('TEST ALARM (Silence to Stop)'), 600); };
+
+// Navigation Tabs Router
+function switchTab(tabId) {
+  $('nav-scanner').classList.toggle('active', tabId === 'scanner');
+  $('nav-analytics').classList.toggle('active', tabId === 'analytics');
+  $('nav-journal').classList.toggle('active', tabId === 'journal');
+  $('view-scanner').style.display = tabId === 'scanner' ? 'block' : 'none';
+  $('view-analytics').style.display = tabId === 'analytics' ? 'block' : 'none';
+  $('view-journal').style.display = tabId === 'journal' ? 'block' : 'none';
+  if (tabId === 'analytics') loadAnalytics();
+}
+
+$('nav-scanner').onclick = () => { window.location.hash = '#scanner'; switchTab('scanner'); };
+$('nav-analytics').onclick = () => { window.location.hash = '#analytics'; switchTab('analytics'); };
+$('nav-journal').onclick = () => { if (currentJournalSymbol) openJournal(currentJournalSymbol); };
+$('journal-back').onclick = () => { window.location.hash = '#analytics'; switchTab('analytics'); };
+
+window.onhashchange = handleRoute;
+function handleRoute() {
+  const hash = window.location.hash || '#scanner';
+  if (hash.startsWith('#journal/')) {
+    const sym = hash.replace('#journal/', '');
+    openJournal(sym);
+  } else if (hash === '#analytics') {
+    switchTab('analytics');
+  } else {
+    switchTab('scanner');
+  }
+}
 
 async function api(path, opts) {
   const r = await fetch(path, opts && { ...opts, headers: { 'content-type': 'application/json' }, body: opts.body && JSON.stringify(opts.body) });
@@ -244,7 +393,7 @@ function renderWl() {
     const tag = w.is_auto ? '<span class="badge-tag tag-auto" title="Auto-scanned volume leader">AUTO</span>' : '<span class="badge-tag tag-pinned" title="Manually pinned">PINNED</span>';
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${tag}</td>
-      <td><b>${esc(w.symbol)}</b></td>
+      <td><a class="coin-link" onclick="openJournal('${esc(w.symbol)}')">${esc(w.symbol)}</a></td>
       <td><span class="badge ${stage}">${stage.replace('_',' ')}</span></td>
       <td class="${s && s.direction === 'LONG' ? 'long' : 'short'}">${s && s.direction ? s.direction : ''}</td>
       <td>${s ? fmt(s.price) : '-'}</td>
@@ -262,8 +411,9 @@ function renderTrades() {
   $('trades-empty').style.display = trades.length > 0 ? 'none' : 'block';
   for (const t of trades) {
     const rClass = (t.currentR || 0) >= 0 ? 'long' : 'short';
+    const chartLink = t.chartUrl ? `<a href="${t.chartUrl}" target="_blank" class="coin-link">🖼️ Chart</a>` : '-';
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td><b>${esc(t.symbol)}</b></td>
+    tr.innerHTML = `<td><a class="coin-link" onclick="openJournal('${esc(t.symbol)}')"><b>${esc(t.symbol)}</b></a></td>
       <td class="${t.direction === 'LONG' ? 'long' : 'short'}">${t.direction}</td>
       <td>${fmt(t.entry_price)}</td>
       <td>${fmt(t.currentPrice)}</td>
@@ -271,7 +421,8 @@ function renderTrades() {
       <td>${fmt(t.sl_price)}</td>
       <td>${fmt(t.tp1_price)}</td>
       <td>${fmt(t.tp2_price)}</td>
-      <td><span class="badge ${t.status}">${t.status.replace('_',' ')}</span></td>`;
+      <td><span class="badge ${t.status}">${t.status.replace('_',' ')}</span></td>
+      <td>${chartLink}</td>`;
     body.appendChild(tr);
   }
 }
@@ -297,7 +448,7 @@ async function loadAlerts() {
   const rows = await api('/api/alerts');
   $('al').innerHTML = rows.map(a => {
     const p = a.payload, e = p.stage === 'ENTRY_READY';
-    return `<tr><td>${new Date(a.ts * 1000).toLocaleTimeString()}</td><td>${esc(a.symbol)}</td>
+    return `<tr><td>${new Date(a.ts * 1000).toLocaleTimeString()}</td><td><a class="coin-link" onclick="openJournal('${esc(a.symbol)}')">${esc(a.symbol)}</a></td>
       <td><span class="badge ${a.stage}">${a.stage.replace('_',' ')}</span></td>
       <td class="${a.direction === 'LONG' ? 'long' : 'short'}">${a.direction || ''}</td>
       <td>${e ? [p.entry, p.sl, p.tp1, p.tp2].map(fmt).join(' / ') : '-'}</td>
@@ -311,6 +462,137 @@ async function load() {
   renderWl();
   renderTrades();
   renderPerformance();
+}
+
+// ---------- VIEW 2: COIN ANALYTICS HUB ----------
+async function loadAnalytics() {
+  analyticsData = await api('/api/analytics/coins');
+  renderAnalytics();
+}
+
+function renderAnalytics() {
+  const q = ($('filter-coin').value || '').trim().toUpperCase();
+  const typeFilter = $('filter-type').value;
+  const tbody = $('analytics-tbody');
+  tbody.innerHTML = '';
+
+  const filtered = analyticsData.filter(c => {
+    if (q && !c.symbol.includes(q)) return false;
+    if (typeFilter === 'watching' && !c.isWatching) return false;
+    if (typeFilter === 'trades' && c.totalTrades === 0) return false;
+    return true;
+  });
+
+  $('analytics-empty').hidden = filtered.length > 0;
+
+  for (const c of filtered) {
+    const tag = !c.isWatching ? '<span class="badge-tag tag-inactive">INACTIVE</span>' : (c.isAuto ? '<span class="badge-tag tag-auto">AUTO</span>' : '<span class="badge-tag tag-pinned">PINNED</span>');
+    const wrBadge = c.winRate >= 50 ? 'long' : c.winRate > 0 ? 'mut' : 'short';
+    const rClass = c.totalR >= 0 ? 'long' : 'short';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><a class="coin-link" onclick="openJournal('${esc(c.symbol)}')"><b>${esc(c.symbol)}</b></a></td>
+      <td>${tag}</td>
+      <td><span class="badge ${c.currentStage}">${c.currentStage}</span></td>
+      <td>${c.totalTrades}</td>
+      <td>${c.wins}W / ${c.losses}L</td>
+      <td class="${wrBadge}">${c.closedTrades > 0 ? c.winRate + '%' : '-'}</td>
+      <td class="${rClass}">${c.totalR > 0 ? '+' : ''}${c.totalR.toFixed(2)} R</td>
+      <td>${c.closedTrades > 0 ? c.avgR.toFixed(2) + ' R' : '-'}</td>
+      <td>${c.totalAlerts}</td>
+      <td>${c.lastActive ? new Date(c.lastActive * 1000).toLocaleDateString() : '-'}</td>
+      <td><button onclick="openJournal('${esc(c.symbol)}')">📔 Journal</button></td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+$('filter-coin').oninput = renderAnalytics;
+$('filter-type').onchange = renderAnalytics;
+
+// ---------- VIEW 3: COIN TRADE JOURNAL ----------
+async function openJournal(symbol) {
+  currentJournalSymbol = symbol;
+  window.location.hash = `#journal/${symbol}`;
+  $('nav-journal').style.display = 'inline-flex';
+  $('nav-journal').textContent = `📔 Journal: ${symbol}`;
+  switchTab('journal');
+
+  $('journal-symbol').textContent = symbol;
+  $('journal-meta').textContent = 'Loading journal details...';
+  $('gallery-grid').innerHTML = '';
+  $('journal-trades-tbody').innerHTML = '';
+  $('journal-alerts-tbody').innerHTML = '';
+
+  const data = await api(`/api/journal/${symbol}`);
+  const s = data.stats;
+  $('journal-meta').innerHTML = `
+    Stage: <span class="badge ${s?.currentStage ?? 'IDLE'}">${s?.currentStage ?? 'IDLE'}</span> ·
+    Price: <b>${fmt(s?.currentPrice)}</b> ·
+    <a href="https://futures.mexc.com/exchange/${symbol}" target="_blank" class="coin-link" style="margin-left:6px;">📈 MEXC Chart ↗</a>
+  `;
+
+  $('journal-stats').innerHTML = `
+    <div class="stat-box" style="padding:6px 12px;"><small class="mut">Win Rate</small><div class="stat-val ${s && s.winRate >= 50 ? 'pos' : 'neg'}" style="font-size:16px;">${s ? s.winRate : 0}% (${s ? s.wins : 0}W/${s ? s.losses : 0}L)</div></div>
+    <div class="stat-box" style="padding:6px 12px;"><small class="mut">Total Realized R</small><div class="stat-val ${s && s.totalR >= 0 ? 'pos' : 'neg'}" style="font-size:16px;">${s && s.totalR > 0 ? '+' : ''}${s ? s.totalR : 0} R</div></div>
+    <div class="stat-box" style="padding:6px 12px;"><small class="mut">Lifetime Trades</small><div class="stat-val" style="font-size:16px;">${data.trades.length}</div></div>
+  `;
+
+  // 1. Chart Gallery
+  const tradesWithCharts = data.trades.filter(t => t.chartUrl);
+  $('gallery-empty').style.display = tradesWithCharts.length > 0 ? 'none' : 'block';
+  for (const t of tradesWithCharts) {
+    const card = document.createElement('div');
+    card.className = 'chart-card';
+    card.innerHTML = `
+      <div class="chart-card-header">
+        <div><b>${new Date(t.opened_at * 1000).toLocaleString()}</b> <span class="badge ${t.status}">${t.status}</span></div>
+        <div class="${t.direction === 'LONG' ? 'long' : 'short'}">${t.direction}</div>
+      </div>
+      <img src="${t.chartUrl}" class="chart-img" alt="Chart" onclick="showLightbox('${t.chartUrl}')">
+      <div style="padding:8px 12px; font-size:12px;" class="row">
+        <span>Entry: <b>${fmt(t.entry_price)}</b></span>
+        <span>SL: <b class="short">${fmt(t.sl_price)}</b></span>
+        <span>TP1: <b class="long">${fmt(t.tp1_price)}</b></span>
+        <span>TP2: <b class="long">${fmt(t.tp2_price)}</b></span>
+        ${t.pnl_r != null ? `<span style="margin-left:auto;" class="${t.pnl_r >= 0 ? 'long' : 'short'}"><b>${t.pnl_r > 0 ? '+' : ''}${t.pnl_r} R</b></span>` : ''}
+      </div>
+    `;
+    $('gallery-grid').appendChild(card);
+  }
+
+  // 2. Trade Execution History Table
+  $('journal-trades-empty').style.display = data.trades.length > 0 ? 'none' : 'block';
+  $('journal-trades-tbody').innerHTML = data.trades.map(t => {
+    const pnl = t.pnl_r != null ? `<b class="${t.pnl_r >= 0 ? 'long' : 'short'}">${t.pnl_r > 0 ? '+' : ''}${t.pnl_r} R</b>` : '-';
+    return `<tr>
+      <td>${new Date(t.opened_at * 1000).toLocaleString()}</td>
+      <td class="${t.direction === 'LONG' ? 'long' : 'short'}">${t.direction}</td>
+      <td>${fmt(t.entry_price)}</td>
+      <td>${fmt(t.sl_price)}</td>
+      <td>${fmt(t.tp1_price)}</td>
+      <td>${fmt(t.tp2_price)}</td>
+      <td><span class="badge ${t.status}">${t.status}</span></td>
+      <td>${pnl}</td>
+      <td>${t.closed_at ? new Date(t.closed_at * 1000).toLocaleTimeString() : '-'}</td>
+    </tr>`;
+  }).join('');
+
+  // 3. Stage Transitions / Alerts Trail
+  $('journal-alerts-empty').style.display = data.alerts.length > 0 ? 'none' : 'block';
+  $('journal-alerts-tbody').innerHTML = data.alerts.map(a => {
+    const p = a.payload;
+    const detailText = a.stage === 'ARMED' ? `Need 1m close beyond: <b>${fmt(p.needBreak)}</b> (${p.barsSinceTap ?? 0} bars since tap)` : (p.orderNote ? esc(p.orderNote) : (p.zone ? `Zone: ${fmt(p.zone.bottom)} - ${fmt(p.zone.top)}` : '-'));
+    return `<tr>
+      <td>${new Date(a.ts * 1000).toLocaleTimeString()}</td>
+      <td><span class="badge ${a.stage}">${a.stage}</span></td>
+      <td>${fmt(p.price)}</td>
+      <td>${detailText}</td>
+    </tr>`;
+  }).join('');
+}
+
+function showLightbox(url) {
+  $('lightbox-img').src = url;
+  $('lightbox').style.display = 'flex';
 }
 
 function connect() {
@@ -344,12 +626,15 @@ function connect() {
     }
   });
   es.addEventListener('milestone', ev => {
-    const d = JSON.parse(ev.data);
     loadAlerts();
-    load(); // update trades table and performance
+    load();
     playChime();
+    if (currentJournalSymbol) openJournal(currentJournalSymbol);
   });
-  es.addEventListener('trade_opened', () => load());
+  es.addEventListener('trade_opened', () => {
+    load();
+    if (currentJournalSymbol) openJournal(currentJournalSymbol);
+  });
 }
 
 $('add').onclick = async () => {
@@ -379,7 +664,7 @@ $('kz').onchange = async () => { state = await api('/api/settings', { method: 'P
 $('scanner').onchange = async () => { state = await api('/api/settings', { method: 'POST', body: { auto_scanner: $('scanner').checked } }); renderMeta(); };
 $('mute').onchange = async () => { state = await api('/api/settings', { method: 'POST', body: { muted: $('mute').checked } }); renderMeta(); };
 
-load().then(loadAlerts).then(connect);
+load().then(loadAlerts).then(connect).then(handleRoute);
 </script>
 </body>
 </html>
