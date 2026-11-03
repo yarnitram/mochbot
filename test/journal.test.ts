@@ -3,13 +3,13 @@ import { Db } from '../src/db/index.js';
 import type { Setup } from '../src/types.js';
 
 describe('Coin Analytics & Journal', () => {
-  it('computes per-coin win rate, total R, and trade metrics correctly', () => {
+  it('computes per-coin win rate, total R, dollar PnL, and trade metrics correctly', () => {
     const db = new Db(':memory:');
 
     // Add BTC on watchlist
     db.addWatch('BTC_USDT', false);
 
-    // Trade 1 (BTC): Win +4.0R
+    // Trade 1 (BTC): Win +4.0R, +$20.00
     const t1 = db.createTrade({
       symbol: 'BTC_USDT',
       direction: 'LONG',
@@ -20,10 +20,13 @@ describe('Coin Analytics & Journal', () => {
       setup_id: 'btc-1',
       chart_file: 'btc_chart_1.png',
       opened_at: 1000,
+      margin: 1.0,
+      leverage: 50.0,
+      notional: 50.0,
     });
-    db.updateTradeStatus(t1, 'CLOSED_TP2', 4.0, 1100);
+    db.updateTradeStatus(t1, 'CLOSED_TP2', 4.0, 1100, 20.0);
 
-    // Trade 2 (BTC): Loss -1.0R
+    // Trade 2 (BTC): Loss -1.0R, -$5.00
     const t2 = db.createTrade({
       symbol: 'BTC_USDT',
       direction: 'LONG',
@@ -33,10 +36,13 @@ describe('Coin Analytics & Journal', () => {
       tp2_price: 155,
       setup_id: 'btc-2',
       opened_at: 1200,
+      margin: 1.0,
+      leverage: 50.0,
+      notional: 50.0,
     });
-    db.updateTradeStatus(t2, 'CLOSED_SL', -1.0, 1250);
+    db.updateTradeStatus(t2, 'CLOSED_SL', -1.0, 1250, -5.0);
 
-    // Trade 3 (ETH): Win +1.5R (BE)
+    // Trade 3 (ETH): Win +1.5R (BE), +$7.50
     const t3 = db.createTrade({
       symbol: 'ETH_USDT',
       direction: 'SHORT',
@@ -46,8 +52,11 @@ describe('Coin Analytics & Journal', () => {
       tp2_price: 1500,
       setup_id: 'eth-1',
       opened_at: 1300,
+      margin: 1.0,
+      leverage: 50.0,
+      notional: 50.0,
     });
-    db.updateTradeStatus(t3, 'CLOSED_BE', 1.5, 1400);
+    db.updateTradeStatus(t3, 'CLOSED_BE', 1.5, 1400, 7.5);
 
     // Insert dummy alerts
     const setup: Setup = {
@@ -85,6 +94,8 @@ describe('Coin Analytics & Journal', () => {
     expect(btc!.winRate).toBe(50.0);
     expect(btc!.totalR).toBe(3.0); // +4.0 - 1.0
     expect(btc!.avgR).toBe(1.5);
+    expect(btc!.totalPnlUsd).toBe(15.0); // +20.0 - 5.0
+    expect(btc!.avgPnlUsd).toBe(7.5);
     expect(btc!.isWatching).toBe(true);
 
     const eth = analytics.find(c => c.symbol === 'ETH_USDT');
@@ -93,6 +104,7 @@ describe('Coin Analytics & Journal', () => {
     expect(eth!.wins).toBe(1);
     expect(eth!.winRate).toBe(100.0);
     expect(eth!.totalR).toBe(1.5);
+    expect(eth!.totalPnlUsd).toBe(7.5);
     expect(eth!.isWatching).toBe(false); // not on watchlist
   });
 
@@ -109,8 +121,11 @@ describe('Coin Analytics & Journal', () => {
       setup_id: 'sol-1',
       chart_file: 'sol_entry_1.png',
       opened_at: 2000,
+      margin: 1.0,
+      leverage: 300.0,
+      notional: 300.0,
     });
-    db.updateTradeStatus(tradeId, 'CLOSED_TP2', 4.0, 2500);
+    db.updateTradeStatus(tradeId, 'CLOSED_TP2', 4.0, 2500, 80.0);
 
     const journal = db.getCoinJournal('SOL_USDT');
     expect(journal.stats).toBeDefined();
@@ -118,5 +133,20 @@ describe('Coin Analytics & Journal', () => {
     expect(journal.trades).toHaveLength(1);
     expect(journal.trades[0].chart_file).toBe('sol_entry_1.png');
     expect(journal.trades[0].pnl_r).toBe(4.0);
+    expect(journal.trades[0].pnl_usd).toBe(80.0);
+    expect(journal.trades[0].margin).toBe(1.0);
+    expect(journal.trades[0].leverage).toBe(300.0);
+  });
+
+  it('manages account capital and default margin settings with defaults ($1000 capital, $1 margin)', () => {
+    const db = new Db(':memory:');
+    expect(db.getAccountCapital()).toBe(1000);
+    expect(db.getDefaultMargin()).toBe(1);
+
+    db.setAccountCapital(5000);
+    db.setDefaultMargin(5);
+
+    expect(db.getAccountCapital()).toBe(5000);
+    expect(db.getDefaultMargin()).toBe(5);
   });
 });

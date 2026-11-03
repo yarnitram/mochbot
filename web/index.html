@@ -64,9 +64,9 @@
   @keyframes banner-glow { 0% { background:#7f1d1d; box-shadow:0 0 10px rgba(239,68,68,0.4); } 100% { background:#991b1b; box-shadow:0 0 20px rgba(239,68,68,0.8); } }
   @keyframes pulse { 0% { opacity: 0.8; } 50% { opacity: 1; } 100% { opacity: 0.8; } }
 
-  .stat-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:6px; }
+  .stat-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:12px; margin-bottom:6px; }
   .stat-box { background:#0b0f14; border:1px solid var(--line); border-radius:8px; padding:10px 14px; }
-  .stat-val { font-size:20px; font-weight:bold; margin-top:4px; }
+  .stat-val { font-size:18px; font-weight:bold; margin-top:4px; }
   .stat-val.pos { color:var(--green); } .stat-val.neg { color:var(--red); }
 
   /* Gallery Grid */
@@ -76,7 +76,7 @@
   .chart-img { width:100%; height:auto; display:block; cursor:pointer; }
   .chart-img:hover { opacity:0.95; }
 
-  /* Lightbox Modal */
+  /* Modal */
   .modal { position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:100; display:flex; align-items:center; justify-content:center; padding:20px; }
   .modal img { max-width:95vw; max-height:90vh; border-radius:6px; box-shadow:0 0 24px rgba(0,0,0,0.9); }
 </style>
@@ -112,23 +112,30 @@
   <!-- VIEW 1: LIVE SCANNER & WATCHLIST -->
   <div id="view-scanner" class="view-pane">
     <div class="card" style="margin-bottom:20px;">
-      <h2>Performance Summary (Phantom SMC MOD-01)</h2>
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
+        <h2 style="margin:0;">Account &amp; Performance (Phantom SMC MOD-01)</h2>
+        <button id="account-settings-btn" style="padding:4px 10px; font-size:11px;">⚙️ Capital &amp; Margin Settings</button>
+      </div>
       <div class="stat-grid">
+        <div class="stat-box">
+          <small class="mut">Account Equity</small>
+          <div id="stat-equity" class="stat-val pos">$1,000.00</div>
+          <small id="stat-equity-sub" class="mut" style="font-size:11px;">Capital: $1,000 | +0.00%</small>
+        </div>
+        <div class="stat-box">
+          <small class="mut">Total Realized P&amp;L</small>
+          <div id="stat-pnl-usd" class="stat-val pos">+$0.00</div>
+          <small id="stat-pnl-r" class="mut" style="font-size:11px;">+0.00 R (0 closed)</small>
+        </div>
+        <div class="stat-box">
+          <small class="mut">Default Margin</small>
+          <div id="stat-margin-lev" class="stat-val" style="font-size:18px;">$1.00 USDT</div>
+          <small class="mut" style="font-size:11px;">Max Leverage per coin</small>
+        </div>
         <div class="stat-box">
           <small class="mut">Win Rate</small>
           <div id="stat-wr" class="stat-val pos">0%</div>
-        </div>
-        <div class="stat-box">
-          <small class="mut">Total Realized R</small>
-          <div id="stat-r" class="stat-val pos">+0.00 R</div>
-        </div>
-        <div class="stat-box">
-          <small class="mut">Closed Trades</small>
-          <div id="stat-closed" class="stat-val">0</div>
-        </div>
-        <div class="stat-box">
-          <small class="mut">Active Open Trades</small>
-          <div id="stat-open" class="stat-val">0</div>
+          <small id="stat-record" class="mut" style="font-size:11px;">0 W / 0 L</small>
         </div>
       </div>
     </div>
@@ -137,7 +144,22 @@
     <div class="card" style="margin-bottom:20px;">
       <h2>Active Tracked Trades (TP1 $\rightarrow$ Break-Even $\rightarrow$ TP2)</h2>
       <table>
-        <thead><tr><th>Symbol</th><th>Dir</th><th>Entry</th><th>Price</th><th>Live R</th><th>SL (BE)</th><th>TP1 (1:3)</th><th>TP2 (1:5)</th><th>Status</th><th>Chart</th></tr></thead>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Dir</th>
+            <th>Entry</th>
+            <th>Price</th>
+            <th>Live P&amp;L ($)</th>
+            <th>Live R</th>
+            <th>Margin / Lev</th>
+            <th>SL (BE)</th>
+            <th>TP1 (1:3)</th>
+            <th>TP2 (1:5)</th>
+            <th>Status</th>
+            <th>Chart</th>
+          </tr>
+        </thead>
         <tbody id="trades-body"></tbody>
       </table>
       <small id="trades-empty" class="mut" style="display:block; padding:8px 0;">No active open trades currently tracked.</small>
@@ -193,6 +215,7 @@
             <th>Trades</th>
             <th>Record (W/L)</th>
             <th>Win Rate</th>
+            <th>Net P&amp;L ($)</th>
             <th>Total R</th>
             <th>Avg R</th>
             <th>Setups</th>
@@ -235,10 +258,12 @@
             <th>Opened Time</th>
             <th>Dir</th>
             <th>Entry</th>
+            <th>Margin / Lev</th>
             <th>SL</th>
             <th>TP1 (1:3)</th>
             <th>TP2 (1:5)</th>
             <th>Outcome Status</th>
+            <th>PnL ($)</th>
             <th>PnL (R)</th>
             <th>Closed Time</th>
           </tr>
@@ -270,6 +295,26 @@
 <!-- Lightbox Modal for Full Chart Images -->
 <div id="lightbox" class="modal" style="display:none;" onclick="this.style.display='none'">
   <img id="lightbox-img" src="" alt="Full Chart">
+</div>
+
+<!-- Account & Sizing Settings Modal -->
+<div id="account-modal" class="modal" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+  <div class="card" style="max-width:380px; width:90%; padding:20px; background:#161b22; border:1px solid #30363d; border-radius:8px;" onclick="event.stopPropagation()">
+    <h3 style="margin-top:0; font-size:16px;">⚙️ Capital &amp; Margin Settings</h3>
+    <div style="margin-bottom:12px;">
+      <label style="display:block; font-size:12px; margin-bottom:4px;" class="mut">Account Starting Capital (USDT)</label>
+      <input id="input-capital" type="number" min="1" step="1" style="width:100%; padding:6px 8px;">
+    </div>
+    <div style="margin-bottom:16px;">
+      <label style="display:block; font-size:12px; margin-bottom:4px;" class="mut">Default Margin per Trade (USDT)</label>
+      <input id="input-margin" type="number" min="0.1" step="0.5" style="width:100%; padding:6px 8px;">
+      <small class="mut" style="display:block; margin-top:4px;">Position Value = Margin × Max Leverage of coin</small>
+    </div>
+    <div class="row" style="justify-content:flex-end;">
+      <button onclick="$('account-modal').style.display='none'" style="background:#21262d; border-color:#30363d;">Cancel</button>
+      <button id="save-account-btn" style="background:#238636; border-color:#2ea043; color:white;">Save Settings</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -340,47 +385,62 @@ function stopSiren(hideBanner = true) {
 }
 
 $('silence-btn').onclick = () => stopSiren(true);
-$('test-audio').onclick = () => { playChime(); setTimeout(() => startSiren('TEST ALARM (Silence to Stop)'), 600); };
+$('test-audio').onclick = () => {
+  getAudioCtx();
+  playChime();
+  startSiren('TEST ALARM: Entry Ready Simulation');
+  setTimeout(() => stopSiren(true), 3500);
+};
 
-// Navigation Tabs Router
+// Tab Navigation
 function switchTab(tabId) {
+  $('view-scanner').style.display = tabId === 'scanner' ? 'grid' : 'none';
+  $('view-analytics').style.display = tabId === 'analytics' ? 'block' : 'none';
+  $('view-journal').style.display = tabId === 'journal' ? 'block' : 'none';
+
   $('nav-scanner').classList.toggle('active', tabId === 'scanner');
   $('nav-analytics').classList.toggle('active', tabId === 'analytics');
   $('nav-journal').classList.toggle('active', tabId === 'journal');
-  $('view-scanner').style.display = tabId === 'scanner' ? 'block' : 'none';
-  $('view-analytics').style.display = tabId === 'analytics' ? 'block' : 'none';
-  $('view-journal').style.display = tabId === 'journal' ? 'block' : 'none';
-  if (tabId === 'analytics') loadAnalytics();
 }
 
 $('nav-scanner').onclick = () => { window.location.hash = '#scanner'; switchTab('scanner'); };
-$('nav-analytics').onclick = () => { window.location.hash = '#analytics'; switchTab('analytics'); };
-$('nav-journal').onclick = () => { if (currentJournalSymbol) openJournal(currentJournalSymbol); };
-$('journal-back').onclick = () => { window.location.hash = '#analytics'; switchTab('analytics'); };
+$('nav-analytics').onclick = () => { window.location.hash = '#analytics'; switchTab('analytics'); loadAnalytics(); };
+$('nav-journal').onclick = () => { if (currentJournalSymbol) switchTab('journal'); };
+$('journal-back').onclick = () => { window.location.hash = '#analytics'; switchTab('analytics'); loadAnalytics(); };
 
-window.onhashchange = handleRoute;
 function handleRoute() {
   const hash = window.location.hash || '#scanner';
   if (hash.startsWith('#journal/')) {
-    const sym = hash.replace('#journal/', '');
-    openJournal(sym);
+    const sym = hash.replace('#journal/', '').trim();
+    if (sym) openJournal(sym);
   } else if (hash === '#analytics') {
     switchTab('analytics');
+    loadAnalytics();
   } else {
     switchTab('scanner');
   }
 }
+window.onhashchange = handleRoute;
 
-async function api(path, opts) {
-  const r = await fetch(path, opts && { ...opts, headers: { 'content-type': 'application/json' }, body: opts.body && JSON.stringify(opts.body) });
-  return r.json();
+function showLightbox(url) {
+  $('lightbox-img').src = url;
+  $('lightbox').style.display = 'flex';
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { headers: { 'content-type': 'application/json' }, ...opts, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
 }
 
 function detail(s) {
   if (!s) return '<span class="mut">waiting for data</span>';
   if (s.stage === 'WATCH') return `${s.distanceAtr ? s.distanceAtr.toFixed(2) : '-'} ATR(15m) from POI`;
   if (s.stage === 'ARMED') return `need 1m close ${s.direction === 'LONG' ? 'above' : 'below'} ${fmt(s.needBreak)}<br><small>${s.barsSinceTap ?? 0} bars since tap</small>`;
-  if (s.stage === 'ENTRY_READY') return `entry ${fmt(s.entry)} · SL ${fmt(s.sl)}<br><small>${esc(s.orderType || '')}: ${esc(s.orderNote || '')}</small>`;
+  if (s.stage === 'ENTRY_READY') {
+    const sz = s.sizing ? `<br><small class="long">Lev ${s.sizing.leverage}x · Margin $${s.sizing.margin.toFixed(2)} ($${s.sizing.notional.toFixed(0)})</small>` : '';
+    return `entry ${fmt(s.entry)} · SL ${fmt(s.sl)}${sz}`;
+  }
   return '<span class="mut">no setup nearby</span>';
 }
 
@@ -411,13 +471,19 @@ function renderTrades() {
   $('trades-empty').style.display = trades.length > 0 ? 'none' : 'block';
   for (const t of trades) {
     const rClass = (t.currentR || 0) >= 0 ? 'long' : 'short';
+    const pnlClass = (t.currentPnlUsd || 0) >= 0 ? 'long' : 'short';
     const chartLink = t.chartUrl ? `<a href="${t.chartUrl}" target="_blank" class="coin-link">🖼️ Chart</a>` : '-';
+    const marginVal = (t.margin ?? 1).toFixed(2);
+    const levVal = t.leverage ?? 50;
+    const notionalVal = (t.notional ?? ((t.margin ?? 1) * (t.leverage ?? 50))).toFixed(0);
     const tr = document.createElement('tr');
     tr.innerHTML = `<td><a class="coin-link" onclick="openJournal('${esc(t.symbol)}')"><b>${esc(t.symbol)}</b></a></td>
       <td class="${t.direction === 'LONG' ? 'long' : 'short'}">${t.direction}</td>
       <td>${fmt(t.entry_price)}</td>
       <td>${fmt(t.currentPrice)}</td>
+      <td class="${pnlClass}"><b>${(t.currentPnlUsd || 0) > 0 ? '+' : ''}$${(t.currentPnlUsd || 0).toFixed(2)}</b></td>
       <td class="${rClass}">${t.currentR > 0 ? '+' : ''}${t.currentR} R</td>
+      <td>$${marginVal} · ${levVal}x <small class="mut">($${notionalVal})</small></td>
       <td>${fmt(t.sl_price)}</td>
       <td>${fmt(t.tp1_price)}</td>
       <td>${fmt(t.tp2_price)}</td>
@@ -429,11 +495,23 @@ function renderTrades() {
 
 function renderPerformance() {
   const p = state.performance || {};
-  $('stat-wr').textContent = `${p.winRate ?? 0}% (${p.wins ?? 0}W / ${p.losses ?? 0}L)`;
-  $('stat-r').textContent = `${(p.totalR || 0) > 0 ? '+' : ''}${(p.totalR || 0).toFixed(2)} R`;
-  $('stat-r').className = 'stat-val ' + ((p.totalR || 0) >= 0 ? 'pos' : 'neg');
-  $('stat-closed').textContent = (p.wins ?? 0) + (p.losses ?? 0);
-  $('stat-open').textContent = p.openTrades ?? 0;
+  const capital = p.accountCapital ?? 1000;
+  const equity = p.currentEquity ?? capital;
+  const pnlUsd = p.totalPnlUsd ?? 0;
+  const retPct = p.returnPct ?? 0;
+  const margin = p.defaultMargin ?? 1;
+
+  $('stat-equity').textContent = `$${equity.toFixed(2)}`;
+  $('stat-equity-sub').textContent = `Capital: $${capital.toFixed(0)} | ${retPct >= 0 ? '+' : ''}${retPct.toFixed(2)}%`;
+  $('stat-equity').className = 'stat-val ' + (equity >= capital ? 'pos' : 'neg');
+
+  $('stat-pnl-usd').textContent = `${pnlUsd >= 0 ? '+' : ''}$${pnlUsd.toFixed(2)}`;
+  $('stat-pnl-usd').className = 'stat-val ' + (pnlUsd >= 0 ? 'pos' : 'neg');
+  $('stat-pnl-r').textContent = `${(p.totalR || 0) > 0 ? '+' : ''}${(p.totalR || 0).toFixed(2)} R (${(p.wins ?? 0) + (p.losses ?? 0)} closed)`;
+
+  $('stat-margin-lev').textContent = `$${margin.toFixed(2)} USDT`;
+  $('stat-wr').textContent = `${p.winRate ?? 0}%`;
+  $('stat-record').textContent = `${p.wins ?? 0} W / ${p.losses ?? 0} L`;
 }
 
 function renderMeta() {
@@ -488,7 +566,8 @@ function renderAnalytics() {
   for (const c of filtered) {
     const tag = !c.isWatching ? '<span class="badge-tag tag-inactive">INACTIVE</span>' : (c.isAuto ? '<span class="badge-tag tag-auto">AUTO</span>' : '<span class="badge-tag tag-pinned">PINNED</span>');
     const wrBadge = c.winRate >= 50 ? 'long' : c.winRate > 0 ? 'mut' : 'short';
-    const rClass = c.totalR >= 0 ? 'long' : 'short';
+    const rClass = (c.totalR || 0) >= 0 ? 'long' : 'short';
+    const pnlClass = (c.totalPnlUsd || 0) >= 0 ? 'long' : 'short';
     const tr = document.createElement('tr');
     tr.innerHTML = `<td><a class="coin-link" onclick="openJournal('${esc(c.symbol)}')"><b>${esc(c.symbol)}</b></a></td>
       <td>${tag}</td>
@@ -496,6 +575,7 @@ function renderAnalytics() {
       <td>${c.totalTrades}</td>
       <td>${c.wins}W / ${c.losses}L</td>
       <td class="${wrBadge}">${c.closedTrades > 0 ? c.winRate + '%' : '-'}</td>
+      <td class="${pnlClass}"><b>${(c.totalPnlUsd || 0) > 0 ? '+' : ''}$${(c.totalPnlUsd || 0).toFixed(2)}</b></td>
       <td class="${rClass}">${c.totalR > 0 ? '+' : ''}${c.totalR.toFixed(2)} R</td>
       <td>${c.closedTrades > 0 ? c.avgR.toFixed(2) + ' R' : '-'}</td>
       <td>${c.totalAlerts}</td>
@@ -531,8 +611,9 @@ async function openJournal(symbol) {
   `;
 
   $('journal-stats').innerHTML = `
+    <div class="stat-box" style="padding:6px 12px;"><small class="mut">Total Realized P&amp;L</small><div class="stat-val ${s && (s.totalPnlUsd || 0) >= 0 ? 'pos' : 'neg'}" style="font-size:16px;">${s && s.totalPnlUsd > 0 ? '+' : ''}$${s ? (s.totalPnlUsd || 0).toFixed(2) : '0.00'}</div></div>
     <div class="stat-box" style="padding:6px 12px;"><small class="mut">Win Rate</small><div class="stat-val ${s && s.winRate >= 50 ? 'pos' : 'neg'}" style="font-size:16px;">${s ? s.winRate : 0}% (${s ? s.wins : 0}W/${s ? s.losses : 0}L)</div></div>
-    <div class="stat-box" style="padding:6px 12px;"><small class="mut">Total Realized R</small><div class="stat-val ${s && s.totalR >= 0 ? 'pos' : 'neg'}" style="font-size:16px;">${s && s.totalR > 0 ? '+' : ''}${s ? s.totalR : 0} R</div></div>
+    <div class="stat-box" style="padding:6px 12px;"><small class="mut">Total Realized R</small><div class="stat-val ${s && (s.totalR || 0) >= 0 ? 'pos' : 'neg'}" style="font-size:16px;">${s && s.totalR > 0 ? '+' : ''}${s ? s.totalR : 0} R</div></div>
     <div class="stat-box" style="padding:6px 12px;"><small class="mut">Lifetime Trades</small><div class="stat-val" style="font-size:16px;">${data.trades.length}</div></div>
   `;
 
@@ -553,7 +634,7 @@ async function openJournal(symbol) {
         <span>SL: <b class="short">${fmt(t.sl_price)}</b></span>
         <span>TP1: <b class="long">${fmt(t.tp1_price)}</b></span>
         <span>TP2: <b class="long">${fmt(t.tp2_price)}</b></span>
-        ${t.pnl_r != null ? `<span style="margin-left:auto;" class="${t.pnl_r >= 0 ? 'long' : 'short'}"><b>${t.pnl_r > 0 ? '+' : ''}${t.pnl_r} R</b></span>` : ''}
+        ${t.pnl_usd != null ? `<span style="margin-left:auto;" class="${t.pnl_usd >= 0 ? 'long' : 'short'}"><b>${t.pnl_usd > 0 ? '+' : ''}$${t.pnl_usd.toFixed(2)} (${t.pnl_r > 0 ? '+' : ''}${t.pnl_r}R)</b></span>` : ''}
       </div>
     `;
     $('gallery-grid').appendChild(card);
@@ -562,16 +643,21 @@ async function openJournal(symbol) {
   // 2. Trade Execution History Table
   $('journal-trades-empty').style.display = data.trades.length > 0 ? 'none' : 'block';
   $('journal-trades-tbody').innerHTML = data.trades.map(t => {
-    const pnl = t.pnl_r != null ? `<b class="${t.pnl_r >= 0 ? 'long' : 'short'}">${t.pnl_r > 0 ? '+' : ''}${t.pnl_r} R</b>` : '-';
+    const pnlUsd = t.pnl_usd != null ? `<b class="${t.pnl_usd >= 0 ? 'long' : 'short'}">${t.pnl_usd > 0 ? '+' : ''}$${t.pnl_usd.toFixed(2)}</b>` : '-';
+    const pnlR = t.pnl_r != null ? `<b class="${t.pnl_r >= 0 ? 'long' : 'short'}">${t.pnl_r > 0 ? '+' : ''}${t.pnl_r} R</b>` : '-';
+    const marginVal = (t.margin ?? 1).toFixed(2);
+    const levVal = t.leverage ?? 50;
     return `<tr>
       <td>${new Date(t.opened_at * 1000).toLocaleString()}</td>
       <td class="${t.direction === 'LONG' ? 'long' : 'short'}">${t.direction}</td>
       <td>${fmt(t.entry_price)}</td>
+      <td>$${marginVal} · ${levVal}x</td>
       <td>${fmt(t.sl_price)}</td>
       <td>${fmt(t.tp1_price)}</td>
       <td>${fmt(t.tp2_price)}</td>
       <td><span class="badge ${t.status}">${t.status}</span></td>
-      <td>${pnl}</td>
+      <td>${pnlUsd}</td>
+      <td>${pnlR}</td>
       <td>${t.closed_at ? new Date(t.closed_at * 1000).toLocaleTimeString() : '-'}</td>
     </tr>`;
   }).join('');
@@ -579,54 +665,67 @@ async function openJournal(symbol) {
   // 3. Stage Transitions / Alerts Trail
   $('journal-alerts-empty').style.display = data.alerts.length > 0 ? 'none' : 'block';
   $('journal-alerts-tbody').innerHTML = data.alerts.map(a => {
-    const p = a.payload;
-    const detailText = a.stage === 'ARMED' ? `Need 1m close beyond: <b>${fmt(p.needBreak)}</b> (${p.barsSinceTap ?? 0} bars since tap)` : (p.orderNote ? esc(p.orderNote) : (p.zone ? `Zone: ${fmt(p.zone.bottom)} - ${fmt(p.zone.top)}` : '-'));
+    const p = a.payload, isEntry = p.stage === 'ENTRY_READY';
+    const detail = isEntry
+      ? `Entry: ${fmt(p.entry)} | SL: ${fmt(p.sl)} | TP1: ${fmt(p.tp1)} | TP2: ${fmt(p.tp2)}`
+      : p.stage === 'ARMED'
+      ? `Need break ${p.direction === 'LONG' ? 'above' : 'below'} ${fmt(p.needBreak)}`
+      : p.stage === 'WATCH' && p.distanceAtr != null
+      ? `Distance: ${p.distanceAtr.toFixed(2)} ATR`
+      : '-';
     return `<tr>
-      <td>${new Date(a.ts * 1000).toLocaleTimeString()}</td>
+      <td>${new Date(a.ts * 1000).toLocaleString()}</td>
       <td><span class="badge ${a.stage}">${a.stage}</span></td>
       <td>${fmt(p.price)}</td>
-      <td>${detailText}</td>
+      <td>${detail}</td>
     </tr>`;
   }).join('');
 }
 
-function showLightbox(url) {
-  $('lightbox-img').src = url;
-  $('lightbox').style.display = 'flex';
-}
+// Settings modal
+$('account-settings-btn').onclick = () => {
+  const p = state.performance || {};
+  $('input-capital').value = p.accountCapital ?? 1000;
+  $('input-margin').value = p.defaultMargin ?? 1;
+  $('account-modal').style.display = 'flex';
+};
+
+$('save-account-btn').onclick = async () => {
+  const capital = parseFloat($('input-capital').value);
+  const margin = parseFloat($('input-margin').value);
+  if (isNaN(capital) || capital <= 0 || isNaN(margin) || margin <= 0) {
+    alert('Please enter valid positive values.');
+    return;
+  }
+  state = await api('/api/settings', { method: 'POST', body: { account_capital: capital, default_margin: margin } });
+  renderPerformance();
+  renderTrades();
+  $('account-modal').style.display = 'none';
+};
 
 function connect() {
   const es = new EventSource('/api/events');
-  es.onopen = () => { $('conn').textContent = 'live'; $('conn').className = 'pill live'; };
-  es.onerror = () => { $('conn').textContent = 'reconnecting'; $('conn').className = 'pill'; };
-  es.addEventListener('state', ev => {
-    const d = JSON.parse(ev.data);
-    if (d.removed) {
-      state.watchlist = state.watchlist.filter(w => w.symbol !== d.symbol);
-    } else {
-      const w = state.watchlist.find(x => x.symbol === d.symbol);
-      if (w) w.state = d.setup;
-    }
+  es.addEventListener('open', () => { $('conn').textContent = 'connected'; $('conn').style.color = 'var(--green)'; });
+  es.addEventListener('error', () => { $('conn').textContent = 'reconnecting'; $('conn').style.color = 'var(--amber)'; });
+  es.addEventListener('state_full', e => { state = JSON.parse(e.data); renderMeta(); renderWl(); renderTrades(); renderPerformance(); if (currentJournalSymbol) openJournal(currentJournalSymbol); });
+  es.addEventListener('state', e => {
+    const { symbol, setup } = JSON.parse(e.data);
+    const row = state.watchlist.find(w => w.symbol === symbol);
+    if (row) row.state = setup;
     renderWl();
+    if (currentJournalSymbol === symbol) openJournal(symbol);
   });
-  es.addEventListener('state_full', ev => {
-    state = JSON.parse(ev.data);
-    renderMeta();
-    renderWl();
-    renderTrades();
-    renderPerformance();
-  });
-  es.addEventListener('alert', ev => {
-    const d = JSON.parse(ev.data);
+  es.addEventListener('alert', e => {
+    const { setup } = JSON.parse(e.data);
     loadAlerts();
-    if (d.setup?.stage === 'ARMED') {
+    if (setup.stage === 'ENTRY_READY') {
+      startSiren(`ENTRY READY: ${setup.symbol} ${setup.direction}`);
+    } else if (setup.stage === 'ARMED') {
       playChime();
-    } else if (d.setup?.stage === 'ENTRY_READY') {
-      startSiren(`ENTRY READY: ${d.setup.symbol} ${d.setup.direction} @ ${fmt(d.setup.price)}`);
     }
+    if (currentJournalSymbol === setup.symbol) openJournal(setup.symbol);
   });
-  es.addEventListener('milestone', ev => {
-    loadAlerts();
+  es.addEventListener('milestone', () => {
     load();
     playChime();
     if (currentJournalSymbol) openJournal(currentJournalSymbol);

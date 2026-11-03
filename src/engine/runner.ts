@@ -13,6 +13,7 @@ import { LifecycleManager, type LifecycleEvent } from './lifecycle.js';
 import type { Notifier } from '../notify/discord.js';
 import type { ContractInfo } from '../mexc/rest.js';
 import { formatAlert } from '../notify/format.js';
+import { computePositionSizing } from '../strategy/sizing.js';
 
 export interface FeedLike {
   subscribe(symbol: string): void;
@@ -222,6 +223,14 @@ export class Runner extends EventEmitter {
     if (closed.length < 20) return null;
     this.lastEval.set(symbol, Date.now());
     const setup = evaluate(symbol, closed, this.store.forming(symbol), this.strategyCfg(symbol));
+    if (setup.stage === 'ENTRY_READY' && setup.entry && setup.sl && setup.tp1 && setup.tp2 && setup.direction) {
+      const contract = this.contracts.find(c => c.symbol === symbol);
+      const capital = this.d.db.getAccountCapital();
+      const margin = this.d.db.getDefaultMargin();
+      const maxLev = contract?.maxLeverage ?? 50;
+      const cSize = contract?.contractSize ?? 1;
+      setup.sizing = computePositionSizing(setup.entry, setup.sl, setup.tp1, setup.tp2, setup.direction, capital, margin, maxLev, cSize);
+    }
     const prev = this.states.get(symbol);
     this.states.set(symbol, setup);
     if (!prev || prev.stage !== setup.stage || prev.setupId !== setup.setupId || Math.abs(prev.price - setup.price) > 0) this.emit('state', { symbol, setup });

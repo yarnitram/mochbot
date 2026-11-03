@@ -9,6 +9,8 @@ export interface AppConfig {
   telegramToken: string | null;
   telegramChatId: string | null;
   discordWebhook: string | null;
+  accountCapital: number;
+  defaultMargin: number;
   strategy: StrategyCfg;
   /** how many closed 1m candles to keep per symbol */
   historyBars: number;
@@ -35,6 +37,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     telegramToken: env.TELEGRAM_BOT_TOKEN || null,
     telegramChatId: env.TELEGRAM_CHAT_ID || null,
     discordWebhook: env.DISCORD_WEBHOOK_URL || null,
+    accountCapital: num(env.ACCOUNT_CAPITAL, 1000),
+    defaultMargin: num(env.DEFAULT_MARGIN, 1),
     historyBars: num(env.HISTORY_BARS, 1500),
     evalThrottleSec: num(env.EVAL_THROTTLE_SEC, 2),
     strategy: {
