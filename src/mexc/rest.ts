@@ -110,3 +110,47 @@ export async function fetchContracts(): Promise<ContractInfo[]> {
 export async function fetchTopVolumePerps(limit = 50): Promise<string[]> {
   return parseTopVolumeTickers(await getJson('/api/v1/contract/ticker'), limit);
 }
+
+export const KNOWN_MEME_BASES = new Set([
+  'DOGE', 'SHIB', 'PEPE', 'FLOKI', 'BONK', '1000BONK', 'WIF', 'BOME', 'MEME',
+  'POPCAT', 'MEW', 'BRETT', 'NEIRO', 'TURBO', 'SUNDOG', 'MOODENG', 'GOAT',
+  'PNUT', 'ACT', 'LUCE', 'CHILLGUY', 'FARTCOIN', 'PENGU', 'SPX', 'CAT', 'USELESS',
+  'KIMCHI', 'CASHCAT', 'GIGGLE', 'STONK', 'TUT', 'SI', 'PEOPLE', 'ANSEM', 'RT'
+]);
+
+export function parseTopMemeTickers(contractJson: any, tickerJson: any, limit = 50): string[] {
+  const contracts: any[] = Array.isArray(contractJson?.data) ? contractJson.data : [];
+  const tickers: any[] = Array.isArray(tickerJson?.data) ? tickerJson.data : [];
+
+  const memeSymbols = new Set<string>();
+  for (const c of contracts) {
+    if (!c || c.quoteCoin !== 'USDT' || c.state !== 0 || !String(c.symbol).endsWith('_USDT')) continue;
+    const plates: string[] = Array.isArray(c.conceptPlate) ? c.conceptPlate : [];
+    const isMemePlate = plates.some(p => typeof p === 'string' && p.toLowerCase().includes('meme'));
+    const base = String(c.baseCoin || '').toUpperCase();
+    const sym = String(c.symbol || '').toUpperCase();
+    const isKnownMeme = KNOWN_MEME_BASES.has(base) || sym.includes('DOGE') || sym.includes('PEPE') || sym.includes('SHIB');
+    if (isMemePlate || isKnownMeme) {
+      memeSymbols.add(c.symbol);
+    }
+  }
+
+  const tickerMap = new Map<string, number>();
+  for (const t of tickers) {
+    if (t?.symbol && Number(t.amount24) > 0) {
+      tickerMap.set(t.symbol, Number(t.amount24));
+    }
+  }
+
+  return Array.from(memeSymbols)
+    .sort((a, b) => (tickerMap.get(b) ?? 0) - (tickerMap.get(a) ?? 0))
+    .slice(0, limit);
+}
+
+export async function fetchTopMemePerps(limit = 50): Promise<string[]> {
+  const [detailJson, tickerJson] = await Promise.all([
+    getJson('/api/v1/contract/detail'),
+    getJson('/api/v1/contract/ticker'),
+  ]);
+  return parseTopMemeTickers(detailJson, tickerJson, limit);
+}

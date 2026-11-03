@@ -79,6 +79,7 @@ export interface CoinStats {
   lastActive: number;
   isWatching: boolean;
   isAuto: boolean;
+  autoType?: number;
   strategy?: StrategyId;
 }
 
@@ -176,16 +177,17 @@ export class Db {
     return this.db.prepare("SELECT symbol, killzone, sensitivity, watch_distance, COALESCE(is_auto, 0) as is_auto, COALESCE(strategy, 'MOD-01') as strategy, added_at FROM watchlist ORDER BY is_auto ASC, symbol ASC").all() as unknown as WatchRow[];
   }
 
-  addWatch(symbol: string, isAuto = false, strategy: StrategyId = 'MOD-01'): boolean {
+  addWatch(symbol: string, isAuto: boolean | number = false, strategy: StrategyId = 'MOD-01'): boolean {
     const existing = this.db.prepare('SELECT symbol, is_auto, strategy FROM watchlist WHERE symbol = ?').get(symbol) as { symbol: string; is_auto: number; strategy: string } | undefined;
+    const isAutoVal = typeof isAuto === 'number' ? isAuto : isAuto ? 1 : 0;
     if (existing) {
-      if (!isAuto && existing.is_auto === 1) {
+      if (isAutoVal === 0 && existing.is_auto > 0) {
         this.db.prepare('UPDATE watchlist SET is_auto = 0, strategy = ? WHERE symbol = ?').run(strategy, symbol);
         return true;
       }
       return false;
     }
-    this.db.prepare('INSERT INTO watchlist(symbol, is_auto, strategy, added_at) VALUES (?, ?, ?, ?)').run(symbol, isAuto ? 1 : 0, strategy, Math.floor(Date.now() / 1000));
+    this.db.prepare('INSERT INTO watchlist(symbol, is_auto, strategy, added_at) VALUES (?, ?, ?, ?)').run(symbol, isAutoVal, strategy, Math.floor(Date.now() / 1000));
     return true;
   }
 
@@ -195,7 +197,7 @@ export class Db {
   }
 
   removeAutoWatchesExcept(keepSymbols: Set<string>): string[] {
-    const all = this.listWatch().filter(w => w.is_auto === 1);
+    const all = this.listWatch().filter(w => w.is_auto > 0);
     const toRemove: string[] = [];
     for (const w of all) {
       if (!keepSymbols.has(w.symbol)) {
@@ -519,6 +521,7 @@ export class Db {
         lastActive,
         isWatching,
         isAuto,
+        autoType: watchMap.get(symbol)?.is_auto ?? 0,
         strategy: watchMap.get(symbol)?.strategy || 'MOD-01',
       });
     }

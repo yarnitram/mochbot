@@ -160,7 +160,7 @@ export function generateChartSvg(symbol: string, htfCandles: Candle[], ltfCandle
   <!-- Panel 2: LTF CHoCH Execution -->
   <g>
     <rect x="${ltfLayout.x}" y="${ltfLayout.y}" width="${ltfLayout.w}" height="${ltfLayout.h}" fill="#161b22" rx="4" stroke="#30363d" stroke-width="1"/>
-    <text x="${ltfLayout.x + 8}" y="${ltfLayout.y - 4}" fill="#8b949e" font-size="11" font-weight="bold" font-family="sans-serif">${setup.strategyId === 'MOD-01D' ? '5m Execution Timeframe (CHoCH Break &amp; Trade Levels)' : '1m Lower Timeframe (CHoCH Break &amp; Trade Levels)'}</text>
+    <text x="${ltfLayout.x + 8}" y="${ltfLayout.y - 4}" fill="#8b949e" font-size="11" font-weight="bold" font-family="sans-serif">${setup.strategyId === 'MOD-01D' ? '5m Execution Timeframe (CHoCH Break &amp; Trade Levels)' : `${setup.ltfMinutes ?? 1}m Lower Timeframe (CHoCH Break &amp; Trade Levels)`}</text>
     ${renderPanelCandles(ltfSlice, ltfLayout, ltfLevels, zoneInfo)}
   </g>
 </svg>

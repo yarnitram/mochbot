@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseTopVolumeTickers } from '../src/mexc/rest.js';
+import { parseTopVolumeTickers, parseTopMemeTickers } from '../src/mexc/rest.js';
 import { Db } from '../src/db/index.js';
 import { Runner } from '../src/engine/runner.js';
 import { loadConfig } from '../src/config.js';
@@ -66,4 +66,54 @@ describe('Auto-Scanner', () => {
     expect(sentStages).toContain('AUTO_USDT:ENTRY_READY');
     expect(sentStages).not.toContain('AUTO_USDT:WATCH');
   });
+
+  it('parseTopMemeTickers discovers meme contracts by conceptPlate and known bases, sorted by volume', () => {
+    const contracts = {
+      data: [
+        { symbol: 'PEPE_USDT', baseCoin: 'PEPE', quoteCoin: 'USDT', state: 0, conceptPlate: ['mc-trade-zone-MEME'] },
+        { symbol: 'DOGE_USDT', baseCoin: 'DOGE', quoteCoin: 'USDT', state: 0, conceptPlate: [] },
+        { symbol: 'BTC_USDT', baseCoin: 'BTC', quoteCoin: 'USDT', state: 0, conceptPlate: ['mc-trade-zone-layer1'] },
+        { symbol: 'SHIB_USDT', baseCoin: 'SHIB', quoteCoin: 'USDT', state: 0, conceptPlate: ['mc-trade-zone-MEME'] },
+      ],
+    };
+    const tickers = {
+      data: [
+        { symbol: 'PEPE_USDT', amount24: 5000000 },
+        { symbol: 'DOGE_USDT', amount24: 8000000 },
+        { symbol: 'BTC_USDT', amount24: 50000000 },
+        { symbol: 'SHIB_USDT', amount24: 1000000 },
+      ],
+    };
+    const topMemes = parseTopMemeTickers(contracts, tickers, 2);
+    expect(topMemes).toEqual(['DOGE_USDT', 'PEPE_USDT']);
+  });
+
+  it('runAutoScan syncs both volume pairs (is_auto=1) and meme pairs (is_auto=2)', async () => {
+    const db = new Db(':memory:');
+    const cfg = loadConfig({ PAPER_MODE: 'true', USE_KILLZONE: 'false' } as any);
+
+    const runner = new Runner({
+      cfg,
+      db,
+      feed: { subscribe: () => {}, unsubscribe: () => {} },
+      fetchKlines: async () => [],
+      fetchContracts: async () => [
+        { symbol: 'BTC_USDT', baseCoin: 'BTC', quoteCoin: 'USDT', priceUnit: 0.1, state: 0 },
+        { symbol: 'PEPE_USDT', baseCoin: 'PEPE', quoteCoin: 'USDT', priceUnit: 0.00001, state: 0 },
+      ],
+      fetchTopVolumePerps: async () => ['BTC_USDT'],
+      fetchTopMemePerps: async () => ['PEPE_USDT'],
+      notifiers: [],
+      log: () => {},
+    });
+
+    await runner.runAutoScan();
+    const rows = db.listWatch();
+    const btc = rows.find(w => w.symbol === 'BTC_USDT');
+    const pepe = rows.find(w => w.symbol === 'PEPE_USDT');
+
+    expect(btc?.is_auto).toBe(1); // Volume leader
+    expect(pepe?.is_auto).toBe(2); // Meme coin
+  });
+
 });

@@ -2,7 +2,7 @@ import { loadConfig } from './config.js';
 import { Db } from './db/index.js';
 import { Runner } from './engine/runner.js';
 import { MexcWs } from './mexc/ws.js';
-import { fetchContracts, fetchKlines, fetchTopVolumePerps } from './mexc/rest.js';
+import { fetchContracts, fetchKlines, fetchTopVolumePerps, fetchTopMemePerps } from './mexc/rest.js';
 import { DiscordNotifier, type Notifier } from './notify/discord.js';
 import { TelegramNotifier } from './notify/telegram.js';
 import { startWeb } from './web/server.js';
@@ -28,6 +28,7 @@ const runner = new Runner({
   fetchKlines: (s, bars, interval = 'Min1') => fetchKlines(s, interval, bars),
   fetchContracts,
   fetchTopVolumePerps,
+  fetchTopMemePerps,
   notifiers,
 });
 

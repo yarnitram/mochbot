@@ -61,6 +61,7 @@ export const DEFAULT_MOD01D_CFG: Mod01dCfg = {
 export interface StrategyCfg {
   sensitivity: Sensitivity;
   htfMinutes: number;
+  ltfMinutes?: number;
   ltfSwingLen: number;
   maxBarsAfterTap: number;
   fvgAtrMult: number;
@@ -79,6 +80,7 @@ export interface StrategyCfg {
 export const DEFAULT_CFG: StrategyCfg = {
   sensitivity: 'balanced',
   htfMinutes: 15,
+  ltfMinutes: 1,
   ltfSwingLen: 3,
   maxBarsAfterTap: 25,
   fvgAtrMult: 0.3,
@@ -154,6 +156,7 @@ export interface Setup {
   atrLtf: number | null;
   sizing?: PositionSizing | null;
   strategyId?: StrategyId;
+  ltfMinutes?: number;
   /** unix seconds of evaluation */
   ts: number;
 }

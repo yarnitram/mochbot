@@ -60,6 +60,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
     killzone: runner.killzoneGlobal,
     muted: runner.muted,
     autoScanner: runner.autoScannerEnabled,
+    memeScanner: runner.memeScannerEnabled,
     globalStrategy: db.getGlobalStrategy(),
     channels: { telegram: !!cfg.telegramToken, discord: !!cfg.discordWebhook },
     performance: db.getPerformanceSummary(),
@@ -221,6 +222,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
         if (typeof b.killzone === 'boolean') runner.setKillzone(b.killzone);
         if (typeof b.muted === 'boolean') runner.setMuted(b.muted);
         if (typeof b.auto_scanner === 'boolean') runner.setAutoScanner(b.auto_scanner);
+        if (typeof b.meme_scanner === 'boolean') runner.setMemeScanner(b.meme_scanner);
         if (b.global_strategy && (b.global_strategy === 'MOD-01' || b.global_strategy === 'MOD-01D')) db.setGlobalStrategy(b.global_strategy);
         if (typeof b.account_capital === 'number' && b.account_capital > 0) db.setAccountCapital(b.account_capital);
         if (typeof b.default_margin === 'number' && b.default_margin > 0) db.setDefaultMargin(b.default_margin);

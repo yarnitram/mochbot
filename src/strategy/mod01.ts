@@ -27,10 +27,10 @@ export interface ScanResult {
 
 const f = (x: number | null | undefined): x is number => typeof x === 'number' && Number.isFinite(x);
 
-export function scan(ltf: Candle[], cfg: StrategyCfg): ScanResult {
+export function scan(ltf: Candle[], cfg: StrategyCfg, htfCandles?: Candle[]): ScanResult {
   const n = ltf.length;
   const period = cfg.htfMinutes * 60;
-  const htf = aggregate(ltf, cfg.htfMinutes);
+  const htf = htfCandles && htfCandles.length > 0 ? htfCandles : aggregate(ltf, cfg.htfMinutes);
   const htfAtr = atr(htf, 14);
   const ltfAtr = atr(ltf, 14);
 
@@ -222,14 +222,18 @@ export function createZones(b1: Candle, b2: Candle, b3: Candle, atr1: number, cf
  * @param live   the forming 1m candle, if any (used for tap / Watch only; CHoCH needs a closed bar)
  */
 export function evaluate(symbol: string, closed: Candle[], live: Candle | null, cfg: StrategyCfg, nowSec = Math.floor(Date.now() / 1000)): Setup {
-  const r = scan(closed, cfg);
+  const ltfMin = cfg.ltfMinutes ?? 1;
+  const htf = aggregate(closed, cfg.htfMinutes);
+  const executionCandles = ltfMin > 1 ? aggregate(closed, ltfMin) : closed;
+  const r = scan(executionCandles, cfg, htf);
   const n = r.n;
-  const price = live?.c ?? (n ? closed[n - 1].c : NaN);
+  const price = live?.c ?? (n ? executionCandles[n - 1].c : NaN);
   const kzNow = inKillzone(nowSec);
   const base: Setup = {
     symbol, stage: 'IDLE', direction: null, setupId: null, price, zone: null, distanceAtr: null, needBreak: null,
     barsSinceTap: null, entry: null, sl: null, tp1: null, tp2: null, orderType: null, orderNote: null,
     killzone: kzNow, atrHtf: f(r.atrHtf) ? r.atrHtf : null, atrLtf: f(r.atrLtf) ? r.atrLtf : null, ts: nowSec,
+    strategyId: 'MOD-01', ltfMinutes: ltfMin,
   };
   if (n < 20 || !Number.isFinite(price)) return base;
 
@@ -270,7 +274,7 @@ export function evaluate(symbol: string, closed: Candle[], live: Candle | null, 
         ...base, stage: 'ARMED', direction: dir, setupId: `${dir}:${zone.startTime}`, zone: zoneOf(zone),
         distanceAtr: 0, needBreak: f(level) ? level : null, barsSinceTap: since,
         orderType: 'TRIGGER_LIMIT',
-        orderNote: f(level) ? `Wait for a 1m close ${isLong ? 'above' : 'below'} ${level}; then trigger-limit at that level.` : 'Waiting for a 1m pivot.',
+        orderNote: f(level) ? `Wait for a ${ltfMin}m close ${isLong ? 'above' : 'below'} ${level}; then trigger-limit at that level.` : `Waiting for a ${ltfMin}m pivot.`,
       });
     }
 

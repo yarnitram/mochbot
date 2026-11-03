@@ -29,6 +29,7 @@ export interface RunnerDeps {
   fetchKlines: (symbol: string, bars: number, interval?: string) => Promise<Candle[]>;
   fetchContracts: () => Promise<ContractInfo[]>;
   fetchTopVolumePerps?: (limit: number) => Promise<string[]>;
+  fetchTopMemePerps?: (limit: number) => Promise<string[]>;
   chartsDir?: string;
   notifiers: Notifier[];
   log?: (msg: string) => void;
@@ -73,6 +74,15 @@ export class Runner extends EventEmitter {
     const v = this.d.db.getSetting('auto_scanner');
     return v === null ? true : v === '1';
   }
+  get memeScannerEnabled(): boolean {
+    const v = this.d.db.getSetting('meme_scanner');
+    return v === null ? true : v === '1';
+  }
+
+  setMemeScanner(on: boolean) {
+    this.d.db.setSetting('meme_scanner', on ? '1' : '0');
+    if (on) void this.runAutoScan();
+  }
 
   setKillzone(on: boolean) {
     this.d.db.setSetting('killzone', on ? '1' : '0');
@@ -97,7 +107,8 @@ export class Runner extends EventEmitter {
 
   strategyCfg(symbol: string): StrategyCfg {
     const row = this.d.db.listWatch().find(w => w.symbol === symbol);
-    const c: StrategyCfg = { ...this.d.cfg.strategy, useKillzone: this.killzoneGlobal };
+    const savedMod01 = this.d.db.getStrategyCfg('MOD-01', {});
+    const c: StrategyCfg = { ...this.d.cfg.strategy, ...savedMod01, useKillzone: this.killzoneGlobal };
     const info = this.contracts.find(x => x.symbol === symbol);
     if (info && info.priceUnit > 0) c.tickSize = info.priceUnit;
     if (row) {
@@ -172,14 +183,13 @@ export class Runner extends EventEmitter {
 
   // ---------- auto-scanner ----------
   async runAutoScan(limit = 50): Promise<string[]> {
-    if (!this.d.fetchTopVolumePerps) return [];
     try {
-      this.log(`auto-scanner: fetching top ${limit} volume pairs from MEXC...`);
-      const topSymbols = await this.d.fetchTopVolumePerps(limit);
-      const topSet = new Set(topSymbols);
+      this.log(`auto-scanner: fetching top volume and meme pairs from MEXC...`);
+      const topSymbols = this.d.fetchTopVolumePerps ? await this.d.fetchTopVolumePerps(limit) : [];
+      const memeSymbols = (this.memeScannerEnabled && this.d.fetchTopMemePerps) ? await this.d.fetchTopMemePerps(limit) : [];
 
-      // Unsubscribe coins that fell off top 50 (unless user pinned them manually)
-      const removed = this.d.db.removeAutoWatchesExcept(topSet);
+      const keepSet = new Set<string>([...topSymbols, ...memeSymbols]);
+      const removed = this.d.db.removeAutoWatchesExcept(keepSet);
       for (const s of removed) {
         this.d.feed.unsubscribe(s);
         this.store.drop(s);
@@ -189,17 +199,29 @@ export class Runner extends EventEmitter {
         this.emit('state', { symbol: s, removed: true });
       }
 
-      // Add & activate new top volume coins
+      const globalStrat = this.d.db.getGlobalStrategy();
+
+      // 1. Add top volume coins (is_auto = 1)
       for (const sym of topSymbols) {
-        const added = this.d.db.addWatch(sym, true);
+        const added = this.d.db.addWatch(sym, 1, globalStrat);
         if (added && !this.store.has(sym)) {
           await this.activate(sym).catch(e => this.log(`auto-scan activate ${sym}: ${(e as Error).message}`));
         }
       }
 
-      this.log(`auto-scanner: synced ${topSymbols.length} active volume pairs (removed ${removed.length} expired)`);
+      // 2. Add top meme coins (is_auto = 2 unless already volume 1)
+      for (const sym of memeSymbols) {
+        const existing = this.d.db.listWatch().find(w => w.symbol === sym);
+        const isAutoVal = existing && existing.is_auto === 1 ? 1 : 2;
+        const added = this.d.db.addWatch(sym, isAutoVal, globalStrat);
+        if (added && !this.store.has(sym)) {
+          await this.activate(sym).catch(e => this.log(`meme-scan activate ${sym}: ${(e as Error).message}`));
+        }
+      }
+
+      this.log(`auto-scanner: synced ${topSymbols.length} volume pairs + ${memeSymbols.length} meme pairs (${keepSet.size} total active, removed ${removed.length} expired)`);
       this.emit('watchlist_updated');
-      return topSymbols;
+      return Array.from(keepSet);
     } catch (e) {
       this.log(`auto-scanner error: ${(e as Error).message}`);
       return [];
@@ -307,7 +329,7 @@ export class Runner extends EventEmitter {
 
     // Filter alert: auto-scanned coins only alert on ARMED & ENTRY_READY (skip WATCH)
     const watchRow = this.d.db.listWatch().find(w => w.symbol === symbol);
-    const isAuto = watchRow?.is_auto === 1;
+    const isAuto = (watchRow?.is_auto ?? 0) > 0;
     if (isAuto && setup.stage === 'WATCH') {
       return setup;
     }
@@ -334,8 +356,10 @@ export class Runner extends EventEmitter {
           htfCandles = this.htf1h.get(setup.symbol) ?? aggregate(ltf, 60);
           ltfCandles = aggregate(ltf, 5); // 5m execution
         } else {
-          htfCandles = aggregate(ltf, this.strategyCfg(setup.symbol).htfMinutes);
-          ltfCandles = ltf; // 1m execution
+          const mod01Cfg = this.strategyCfg(setup.symbol);
+          htfCandles = aggregate(ltf, mod01Cfg.htfMinutes);
+          const ltfMin = mod01Cfg.ltfMinutes ?? 1;
+          ltfCandles = ltfMin > 1 ? aggregate(ltf, ltfMin) : ltf; // 1m, 3m, 5m execution
         }
         chartBuffer = renderChartPng(setup.symbol, htfCandles, ltfCandles, setup);
 

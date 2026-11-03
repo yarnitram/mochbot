@@ -182,3 +182,13 @@ describe('MOD-01 short scenario (mirrored)', () => {
     expect(st.direction).toBe('SHORT');
   });
 });
+
+describe('MOD-01 3-Minute LTF Execution', () => {
+  it('aggregates 1m candles into 3m execution timeframe and evaluates CHoCH', () => {
+    const { candles } = longScenario();
+    const s = evaluate('TEST_USDT', candles, null, cfg({ ltfMinutes: 3 }));
+    expect(s.ltfMinutes).toBe(3);
+    expect(s.strategyId).toBe('MOD-01');
+    expect(['IDLE', 'WATCH', 'ARMED', 'ENTRY_READY']).toContain(s.stage);
+  });
+});

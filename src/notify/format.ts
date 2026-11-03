@@ -25,7 +25,7 @@ export function formatAlert(s: Setup): string {
     lines.push(`Distance to POI: ${s.distanceAtr.toFixed(2)} ATR(${tfStr})`);
   }
   if (s.stage === 'ARMED') {
-    const tfBreak = s.strategyId === 'MOD-01D' ? '5m' : '1m';
+    const tfBreak = s.strategyId === 'MOD-01D' ? '5m' : `${s.ltfMinutes ?? 1}m`;
     if (s.needBreak !== null) lines.push(`Need ${tfBreak} close ${s.direction === 'LONG' ? 'above' : 'below'}: ${p(s.needBreak)}`);
     lines.push(`Bars since tap: ${s.barsSinceTap ?? '-'} / window`);
   }
