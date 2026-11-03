@@ -206,4 +206,54 @@ describe('Runner (integration with fakes)', () => {
     const cfg = loadConfig({} as any);
     expect(cfg.strategy.ltfMinutes).toBe(3);
   });
+
+  it('resetAll() purges all database records, clears cached states, and resets runner', async () => {
+    const db = new Db(':memory:');
+    db.addWatch('BTC_USDT');
+    db.addWatch('SOL_USDT');
+    db.insertAlert({
+      symbol: 'BTC_USDT',
+      stage: 'ENTRY_READY',
+      direction: 'LONG',
+      setupId: 'test-1',
+      price: 100,
+      zone: null,
+      distanceAtr: null,
+      needBreak: null,
+      barsSinceTap: null,
+      entry: 100,
+      sl: 90,
+      tp1: 130,
+      tp2: 150,
+      orderType: null,
+      orderNote: null,
+      killzone: false,
+      atrHtf: null,
+      atrLtf: null,
+      strategyId: 'MOD-01',
+      ts: 1000,
+    });
+    db.setSetting('auto_scanner', '1');
+    db.setSetting('account_capital', '5000');
+
+    const runner = new Runner({
+      cfg: loadConfig({ PAPER_MODE: 'true' } as any),
+      db,
+      feed: { subscribe() {}, unsubscribe() {} },
+      fetchKlines: async () => [],
+      fetchContracts: async () => [],
+      notifiers: [],
+    });
+
+    const res = runner.resetAll();
+    expect(res.cleared.watchlist).toBe(2);
+    expect(res.cleared.alerts).toBe(1);
+    expect(res.cleared.settings).toBe(2);
+
+    expect(db.listWatch().length).toBe(0);
+    expect(db.recentAlerts(10).length).toBe(0);
+    expect(runner.states.size).toBe(0);
+    expect(runner.anyScannerActive).toBe(false);
+  });
 });
+

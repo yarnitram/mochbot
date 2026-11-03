@@ -126,6 +126,7 @@
           <button id="strategy-settings-btn" style="padding:4px 10px; font-size:11px; background:#1f2937; border-color:#374151;">⚙️ Strategies</button>
           <button id="account-settings-btn" style="padding:4px 10px; font-size:11px;">⚙️ Capital &amp; Risk</button>
           <button id="mochex-sync-btn" style="padding:4px 10px; font-size:11px; background:#4c1d95; border-color:#7c3aed; color:#c4b5fd;">🔗 MOCHEX Sync</button>
+          <button id="btn-system-reset" onclick="openResetModal()" style="padding:4px 10px; font-size:11px; background:#450a0a; border:1px solid #ef4444; color:#f87171; cursor:pointer;" title="Factory reset all database tables, trades, watchlist, and charts">🔄 Reset All</button>
         </div>
       </div>
       <div class="stat-grid">
@@ -228,6 +229,40 @@
         <thead><tr><th>Time</th><th>Symbol</th><th>Strat</th><th>Stage</th><th>Dir</th><th>Entry / SL / TP1 / TP2</th><th>Order / Note</th><th>Sent</th></tr></thead>
         <tbody id="al"></tbody>
       </table>
+    </div>
+  </div>
+
+
+  <!-- Modal: System Factory Reset -->
+  <div id="system-reset-modal" class="modal" style="display:none;" onclick="if(event.target===this)closeResetModal()">
+    <div class="card" style="max-width:480px; width:100%; border:1px solid #7f1d1d; background:#161b22; box-shadow:0 12px 36px rgba(0,0,0,0.85);" onclick="event.stopPropagation()">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid #30363d; padding-bottom:8px;">
+        <h3 style="margin:0; font-size:16px; color:#f87171; display:flex; align-items:center; gap:8px;">
+          <span>⚠️</span> Factory Reset All Data
+        </h3>
+        <button onclick="closeResetModal()" class="x" style="font-size:18px;">✕</button>
+      </div>
+
+      <p style="font-size:13px; color:#c9d1d9; line-height:1.5; margin-bottom:12px;">
+        This action will completely wipe all persistent data and return Mochbot to a pristine, clean state:
+      </p>
+
+      <ul style="font-size:12px; color:#8b949e; margin:0 0 16px 20px; line-height:1.7;">
+        <li><strong style="color:#f87171;">Active &amp; Historical Trades:</strong> All open and closed trades purged.</li>
+        <li><strong style="color:#f87171;">Watchlist:</strong> Completely cleared to blank (0 coins).</li>
+        <li><strong style="color:#f87171;">Recent Alerts:</strong> Alert history cleared.</li>
+        <li><strong style="color:#f87171;">Saved Charts:</strong> All generated chart snapshot files deleted from disk.</li>
+        <li><strong style="color:#f87171;">Settings:</strong> Capital ($1,000), Risk per Trade ($5.00), and auto-scanners reset to defaults.</li>
+      </ul>
+
+      <p style="font-size:12px; color:#fca5a5; background:#450a0a; border:1px solid #7f1d1d; padding:8px 12px; border-radius:4px; margin-bottom:16px;">
+        ⚠️ This action cannot be undone. Are you sure you want to proceed?
+      </p>
+
+      <div class="row" style="justify-content:flex-end; gap:8px;">
+        <button onclick="closeResetModal()" style="background:#21262d; border-color:#30363d; color:#c9d1d9; padding:6px 12px; font-size:12px;">Cancel</button>
+        <button id="btn-confirm-reset" onclick="confirmSystemReset()" style="background:#b91c1c; border-color:#dc2626; color:#ffffff; font-weight:bold; padding:6px 14px; font-size:12px;">⚠️ Yes, Reset Everything</button>
+      </div>
     </div>
   </div>
 

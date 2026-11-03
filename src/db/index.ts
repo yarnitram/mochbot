@@ -208,6 +208,19 @@ export class Db {
     return true;
   }
 
+  resetAll(): { watchlist: number; trades: number; alerts: number; settings: number } {
+    const w = this.db.prepare('DELETE FROM watchlist').run();
+    const t = this.db.prepare('DELETE FROM trades').run();
+    const a = this.db.prepare('DELETE FROM alerts').run();
+    const s = this.db.prepare('DELETE FROM settings').run();
+    return {
+      watchlist: Number(w.changes),
+      trades: Number(t.changes),
+      alerts: Number(a.changes),
+      settings: Number(s.changes),
+    };
+  }
+
   clearWatchlist(): number {
     const r = this.db.prepare('DELETE FROM watchlist').run();
     return Number(r.changes);

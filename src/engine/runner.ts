@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, existsSync, readdirSync, unlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import type { AppConfig } from '../config.js';
 import type { Db } from '../db/index.js';
@@ -371,6 +371,47 @@ export class Runner extends EventEmitter {
       return { ok: true, msg: `${symbol} added but backfill failed: ${(e as Error).message}`, symbol };
     }
     return { ok: true, msg: added ? `${symbol} added` : `${symbol} pinned to watchlist`, symbol };
+  }
+
+  resetAll(): { cleared: { watchlist: number; trades: number; alerts: number; settings: number }; chartsDeleted: number } {
+    const list = this.d.db.listWatch();
+    for (const w of list) {
+      this.d.feed.unsubscribe(w.symbol);
+      this.store.drop(w.symbol);
+      this.htf1h.delete(w.symbol);
+      this.htf4h.delete(w.symbol);
+      this.states.delete(w.symbol);
+      this.emit('state', { symbol: w.symbol, removed: true });
+    }
+    this.lastEval.clear();
+    this.states.clear();
+
+    const cleared = this.d.db.resetAll();
+
+    let chartsDeleted = 0;
+    if (this.chartsDir && existsSync(this.chartsDir)) {
+      try {
+        const files = readdirSync(this.chartsDir);
+        for (const file of files) {
+          if (file.endsWith('.png')) {
+            unlinkSync(join(this.chartsDir, file));
+            chartsDeleted++;
+          }
+        }
+      } catch (err) {
+        this.log(`error clearing charts dir: ${(err as Error).message}`);
+      }
+    }
+
+    if (this.autoScanTimer) {
+      clearInterval(this.autoScanTimer);
+      this.autoScanTimer = null;
+    }
+
+    this.emit('state_reset', { reevaluated: 0, total: 0 });
+    this.emit('watchlist_updated');
+    this.log(`system reset performed: cleared ${cleared.watchlist} coins, ${cleared.trades} trades, ${cleared.alerts} alerts, ${cleared.settings} settings, deleted ${chartsDeleted} charts`);
+    return { cleared, chartsDeleted };
   }
 
   clearWatchlist(): { cleared: number; msg: string } {

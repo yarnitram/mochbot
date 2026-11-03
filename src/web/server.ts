@@ -280,6 +280,11 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
         const list = runner.contracts.filter(c => !q || c.symbol.includes(q)).slice(0, 30).map(c => c.symbol);
         return json(res, 200, list);
       }
+      if (path === '/api/system/reset' && req.method === 'POST') {
+        const out = runner.resetAll();
+        push('state_full', snapshot());
+        return json(res, 200, { ok: true, ...out });
+      }
       if (path === '/api/watchlist/clear' && req.method === 'POST') {
         const out = runner.clearWatchlist();
         push('state_full', snapshot());
