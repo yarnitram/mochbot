@@ -779,7 +779,7 @@ async function openJournal(symbol, navigate = true) {
   $('journal-meta').innerHTML = `
     Stage: <span class="badge ${s?.currentStage ?? 'IDLE'}">${s?.currentStage ?? 'IDLE'}</span> ·
     Price: <b>${fmt(s?.currentPrice)}</b> ·
-    <a href="https://futures.mexc.com/exchange/${symbol}" target="_blank" class="coin-link" style="margin-left:6px;">📈 MEXC Chart ↗</a>
+    <a href="https://www.mexc.co/en-PH/futures/${symbol}?type=linear_swap" target="_blank" class="coin-link" style="margin-left:6px;">📈 MEXC Chart ↗</a>
   `;
 
   $('journal-stats').innerHTML = `

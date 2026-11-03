@@ -131,7 +131,7 @@ describe('formatAlert', () => {
     const t = formatAlert(setup({ stage: 'ENTRY_READY', entry: 100, sl: 99, tp1: 103, tp2: 105, orderType: 'LIMIT', orderNote: 'wait' }));
     expect(t).toContain('ENTRY READY');
     expect(t).toContain('TP1 (1:3)');
-    expect(t).toContain('https://futures.mexc.com/exchange/BTC_USDT');
+    expect(t).toContain('https://www.mexc.co/en-PH/futures/BTC_USDT?type=linear_swap');
   });
 });
 

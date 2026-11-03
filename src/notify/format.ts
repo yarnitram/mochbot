@@ -11,7 +11,7 @@ function p(n: number | null | undefined): string {
 }
 
 export function mexcLink(symbol: string) {
-  return `https://futures.mexc.com/exchange/${symbol}`;
+  return `https://www.mexc.co/en-PH/futures/${symbol}?type=linear_swap`;
 }
 
 export function formatAlert(s: Setup): string {
