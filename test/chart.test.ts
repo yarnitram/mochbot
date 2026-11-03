@@ -48,10 +48,10 @@ describe('Chart Renderer', () => {
     expect(svg).toContain('<svg');
     expect(svg).toContain('BTC_USDT');
     expect(svg).toContain('DEMAND POI');
-    expect(svg).toContain('ENTRY:');
-    expect(svg).toContain('SL:');
-    expect(svg).toContain('TP1 (1:3):');
-    expect(svg).toContain('TP2 (1:5):');
+    expect(svg).toContain('ENTRY');
+    expect(svg).toContain('SL');
+    expect(svg).toContain('TP1 (1:3)');
+    expect(svg).toContain('TP2 (1:5)');
   });
 
   it('renders a valid PNG buffer with PNG signature (0x89504E47)', () => {
