@@ -118,6 +118,7 @@
         <div class="row">
           <button id="strategy-settings-btn" style="padding:4px 10px; font-size:11px; background:#1f2937; border-color:#374151;">⚙️ Strategies</button>
           <button id="account-settings-btn" style="padding:4px 10px; font-size:11px;">⚙️ Capital &amp; Margin</button>
+          <button id="mochex-sync-btn" style="padding:4px 10px; font-size:11px; background:#4c1d95; border-color:#7c3aed; color:#c4b5fd;">🔗 MOCHEX Sync</button>
         </div>
       </div>
       <div class="stat-grid">
@@ -439,6 +440,63 @@
     <div class="row" style="justify-content:flex-end;">
       <button onclick="$('account-modal').style.display='none'" style="background:#21262d; border-color:#30363d;">Cancel</button>
       <button id="save-account-btn" style="background:#238636; border-color:#2ea043; color:white;">Save Settings</button>
+    </div>
+  </div>
+</div>
+
+<!-- MOCHEX Trade Sync Modal -->
+<div id="mochex-modal" class="modal" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+  <div class="card" style="max-width:460px; width:92%; padding:20px; background:#161b22; border:1px solid #7c3aed; border-radius:8px;" onclick="event.stopPropagation()">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h3 style="margin:0; font-size:16px; color:#c4b5fd; display:flex; align-items:center; gap:8px;">
+        <span>🔗</span> MOCHEX Trade Sync
+      </h3>
+      <span id="mochex-status-badge" style="font-size:11px; padding:2px 8px; border-radius:4px; background:#21262d; border:1px solid #30363d; color:#8b949e;">Not Tested</span>
+    </div>
+
+    <p style="font-size:12px; color:#8b949e; margin:0 0 16px 0; line-height:1.4;">
+      Automatically syncs opened positions, progressive targets (TP1 to Break-Even &amp; TP2 runner), and closed trades to your live MOCHEX / EXMOCHEX dashboard.
+    </p>
+
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; background:#0d1117; padding:10px 12px; border-radius:6px; border:1px solid #30363d;">
+      <div>
+        <label style="font-size:13px; font-weight:600; display:block; cursor:pointer; color:#e6edf3;" for="input-mochex-enabled">Enable MOCHEX Sync</label>
+        <small class="mut" style="font-size:11px;">Send live trade webhooks on open, update, and close</small>
+      </div>
+      <input id="input-mochex-enabled" type="checkbox" style="width:18px; height:18px; cursor:pointer;">
+    </div>
+
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; background:#0d1117; padding:10px 12px; border-radius:6px; border:1px solid #30363d;">
+      <div>
+        <label style="font-size:13px; font-weight:600; display:block; cursor:pointer; color:#e6edf3;" for="input-mochex-notify">Send MOCHEX Alerts</label>
+        <small class="mut" style="font-size:11px;">Trigger Telegram/Discord alerts configured inside MOCHEX</small>
+      </div>
+      <input id="input-mochex-notify" type="checkbox" style="width:18px; height:18px; cursor:pointer;">
+    </div>
+
+    <div style="margin-bottom:12px;">
+      <label style="display:block; font-size:12px; margin-bottom:4px;" class="mut">MOCHEX Webhook URL</label>
+      <input id="input-mochex-url" type="text" placeholder="https://staging.ymatt.online/api/trades/webhook" style="width:100%; padding:7px 9px; font-size:12px; font-family:monospace;">
+      <small class="mut" style="display:block; margin-top:4px; font-size:11px;">Base origin or full URL. E.g. https://staging.ymatt.online</small>
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <label style="display:block; font-size:12px; margin-bottom:4px;" class="mut">MOCHEX API Key (<span style="font-family:monospace;">X-API-Key</span>)</label>
+      <div style="display:flex; gap:6px;">
+        <input id="input-mochex-key" type="password" placeholder="tv_sec_..." style="flex:1; padding:7px 9px; font-size:12px; font-family:monospace;">
+        <button id="mochex-key-toggle" type="button" style="padding:4px 10px; font-size:12px; background:#21262d; border-color:#30363d;">👁️</button>
+      </div>
+      <small class="mut" style="display:block; margin-top:4px; font-size:11px;">Found under MOCHEX Dashboard &gt; Settings &gt; API Keys</small>
+    </div>
+
+    <div id="mochex-test-result" style="display:none; font-size:12px; padding:8px 10px; border-radius:6px; margin-bottom:14px;"></div>
+
+    <div class="row" style="justify-content:space-between; align-items:center;">
+      <button id="mochex-test-btn" type="button" style="background:#1f2937; border-color:#4b5563; color:#e5e7eb; font-size:12px; padding:6px 12px;">⚡ Test Connection</button>
+      <div class="row" style="gap:8px;">
+        <button onclick="$('mochex-modal').style.display='none'" style="background:#21262d; border-color:#30363d; font-size:12px;">Cancel</button>
+        <button id="save-mochex-btn" style="background:#7c3aed; border-color:#8b5cf6; color:white; font-size:12px; font-weight:600; padding:6px 14px;">Save Settings</button>
+      </div>
     </div>
   </div>
 </div>
@@ -982,6 +1040,106 @@ $('save-account-btn').onclick = async () => {
   renderPerformance();
   renderTrades();
   $('account-modal').style.display = 'none';
+};
+
+// MOCHEX Sync modal wiring
+$('mochex-sync-btn').onclick = async () => {
+  try {
+    const c = await api('/api/mochex/config');
+    $('input-mochex-enabled').checked = !!c.enabled;
+    $('input-mochex-notify').checked = c.notify !== false;
+    $('input-mochex-url').value = c.apiUrl || '';
+    $('input-mochex-key').value = c.apiKey || '';
+    $('mochex-test-result').style.display = 'none';
+    const badge = $('mochex-status-badge');
+    badge.textContent = c.enabled ? (c.hasKey ? 'Active & Configured' : 'Missing Key') : 'Disabled';
+    badge.style.color = c.enabled && c.hasKey ? '#3fb950' : '#8b949e';
+    badge.style.borderColor = c.enabled && c.hasKey ? '#2ea043' : '#30363d';
+    $('mochex-modal').style.display = 'flex';
+  } catch (err) {
+    alert('Failed to load MOCHEX config: ' + err.message);
+  }
+};
+
+$('mochex-key-toggle').onclick = () => {
+  const input = $('input-mochex-key');
+  input.type = input.type === 'password' ? 'text' : 'password';
+};
+
+$('mochex-test-btn').onclick = async () => {
+  const btn = $('mochex-test-btn');
+  const resBox = $('mochex-test-result');
+  const origText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = 'Testing...';
+  resBox.style.display = 'none';
+
+  try {
+    const url = $('input-mochex-url').value.trim();
+    const apiKey = $('input-mochex-key').value.trim();
+    const result = await api('/api/mochex/test', {
+      method: 'POST',
+      body: { apiUrl: url, apiKey }
+    });
+
+    resBox.style.display = 'block';
+    if (result.ok) {
+      resBox.style.background = '#0d2818';
+      resBox.style.border = '1px solid #2ea043';
+      resBox.style.color = '#3fb950';
+      resBox.innerHTML = '✅ <strong>Connected successfully!</strong> MOCHEX authenticated (Active trades: ' + (result.active_count ?? 0) + ')';
+      $('mochex-status-badge').textContent = 'Connected';
+      $('mochex-status-badge').style.color = '#3fb950';
+      $('mochex-status-badge').style.borderColor = '#2ea043';
+    } else {
+      resBox.style.background = '#2d1515';
+      resBox.style.border = '1px solid #f85149';
+      resBox.style.color = '#f85149';
+      resBox.innerHTML = '❌ <strong>Connection failed:</strong> ' + esc(result.error || 'Check URL and API key');
+      $('mochex-status-badge').textContent = 'Error';
+      $('mochex-status-badge').style.color = '#f85149';
+      $('mochex-status-badge').style.borderColor = '#f85149';
+    }
+  } catch (err) {
+    resBox.style.display = 'block';
+    resBox.style.background = '#2d1515';
+    resBox.style.border = '1px solid #f85149';
+    resBox.style.color = '#f85149';
+    resBox.innerHTML = '❌ <strong>Error:</strong> ' + esc(err.message);
+  } finally {
+    btn.innerHTML = origText;
+    btn.disabled = false;
+  }
+};
+
+$('save-mochex-btn').onclick = async () => {
+  const btn = $('save-mochex-btn');
+  const origText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = 'Saving...';
+
+  try {
+    const enabled = $('input-mochex-enabled').checked;
+    const notify = $('input-mochex-notify').checked;
+    const apiUrl = $('input-mochex-url').value.trim();
+    const apiKey = $('input-mochex-key').value.trim();
+
+    await api('/api/mochex/config', {
+      method: 'POST',
+      body: { enabled, notify, apiUrl, apiKey }
+    });
+
+    btn.innerHTML = '✅ Saved!';
+    setTimeout(() => {
+      btn.innerHTML = origText;
+      btn.disabled = false;
+      $('mochex-modal').style.display = 'none';
+    }, 600);
+  } catch (err) {
+    alert('Failed to save MOCHEX settings: ' + err.message);
+    btn.innerHTML = origText;
+    btn.disabled = false;
+  }
 };
 
 function connect() {

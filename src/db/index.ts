@@ -3,6 +3,7 @@ import type { DatabaseSync as DatabaseSyncT } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { Setup, StrategyId } from '../types.js';
+import type { MochexConfig } from '../config.js';
 
 export interface WatchRow {
   symbol: string;
@@ -47,6 +48,7 @@ export interface TradeRow {
   strategy_id: string;
   setup_id: string | null;
   chart_file: string | null;
+  mochex_trade_id?: string | null;
 }
 
 export interface PerformanceSummary {
@@ -136,7 +138,8 @@ export class Db {
         notional REAL DEFAULT 50.0,
         strategy_id TEXT NOT NULL DEFAULT 'MOD-01',
         setup_id TEXT UNIQUE,
-        chart_file TEXT
+        chart_file TEXT,
+        mochex_trade_id TEXT
       );
       CREATE INDEX IF NOT EXISTS trades_status ON trades(status);
       CREATE INDEX IF NOT EXISTS trades_symbol ON trades(symbol);
@@ -169,6 +172,9 @@ export class Db {
     } catch {}
     try {
       this.db.exec(`ALTER TABLE trades ADD COLUMN strategy_id TEXT NOT NULL DEFAULT 'MOD-01';`);
+    } catch {}
+    try {
+      this.db.exec(`ALTER TABLE trades ADD COLUMN mochex_trade_id TEXT;`);
     } catch {}
     try {
       const rawMod01 = this.getSetting('strategy_cfg_mod01');
@@ -386,6 +392,10 @@ export class Db {
     return this.db.prepare("SELECT * FROM trades WHERE status IN ('OPEN', 'TP1_HIT') ORDER BY opened_at DESC").all() as unknown as TradeRow[];
   }
 
+  getTrade(id: number): TradeRow | undefined {
+    return this.db.prepare('SELECT * FROM trades WHERE id = ?').get(id) as unknown as TradeRow | undefined;
+  }
+
   getTradeHistory(limit = 50): TradeRow[] {
     return this.db.prepare('SELECT * FROM trades ORDER BY id DESC LIMIT ?').all(limit) as unknown as TradeRow[];
   }
@@ -559,4 +569,28 @@ export class Db {
   close() {
     this.db.close();
   }
+  setMochexTradeId(id: number, mochexTradeId: string): void {
+    this.db.prepare('UPDATE trades SET mochex_trade_id = ? WHERE id = ?').run(mochexTradeId, id);
+  }
+
+  getMochexConfig(defaults: MochexConfig): MochexConfig {
+    const url = this.getSetting('mochex_api_url');
+    const key = this.getSetting('mochex_api_key');
+    const enabled = this.getSetting('mochex_sync_enabled');
+    const notify = this.getSetting('mochex_notify');
+    return {
+      apiUrl: url || defaults.apiUrl,
+      apiKey: key !== null ? (key || null) : defaults.apiKey,
+      enabled: enabled !== null ? enabled === '1' : defaults.enabled,
+      notify: notify !== null ? notify === '1' : defaults.notify,
+    };
+  }
+
+  setMochexConfig(cfg: Partial<MochexConfig>): void {
+    if (cfg.apiUrl !== undefined) this.setSetting('mochex_api_url', cfg.apiUrl);
+    if (cfg.apiKey !== undefined) this.setSetting('mochex_api_key', cfg.apiKey || '');
+    if (cfg.enabled !== undefined) this.setSetting('mochex_sync_enabled', cfg.enabled ? '1' : '0');
+    if (cfg.notify !== undefined) this.setSetting('mochex_notify', cfg.notify ? '1' : '0');
+  }
+
 }

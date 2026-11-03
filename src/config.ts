@@ -1,6 +1,13 @@
 import type { StrategyCfg } from './types.js';
 import { DEFAULT_CFG } from './types.js';
 
+export interface MochexConfig {
+  apiUrl: string;
+  apiKey: string | null;
+  enabled: boolean;
+  notify: boolean;
+}
+
 export interface AppConfig {
   paperMode: boolean;
   port: number;
@@ -16,6 +23,7 @@ export interface AppConfig {
   historyBars: number;
   /** min seconds between evaluations of the same symbol on forming-candle ticks */
   evalThrottleSec: number;
+  mochex: MochexConfig;
 }
 
 function bool(v: string | undefined, d: boolean): boolean {
@@ -48,6 +56,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       useKillzone: bool(env.USE_KILLZONE, DEFAULT_CFG.useKillzone),
       watchDistanceAtr: num(env.WATCH_DISTANCE_ATR, DEFAULT_CFG.watchDistanceAtr),
       maxBarsAfterTap: num(env.MAX_BARS_AFTER_TAP, DEFAULT_CFG.maxBarsAfterTap),
+    },
+    mochex: {
+      apiUrl: env.MOCHEX_API_URL || 'https://staging.ymatt.online/api/trades/webhook',
+      apiKey: env.MOCHEX_API_KEY || null,
+      enabled: bool(env.MOCHEX_SYNC_ENABLED, !!env.MOCHEX_API_KEY),
+      notify: bool(env.MOCHEX_NOTIFY, true),
     },
   };
 }

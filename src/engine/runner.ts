@@ -12,6 +12,8 @@ import { StrategyId, Mod01dCfg, DEFAULT_MOD01D_CFG } from '../types.js';
 import { AlertGate } from './alertGate.js';
 import { renderChartPng } from '../chart/renderer.js';
 import { LifecycleManager, type LifecycleEvent } from './lifecycle.js';
+import { MochexSync } from '../notify/mochex.js';
+import type { TradeRow } from '../db/index.js';
 import type { Notifier } from '../notify/discord.js';
 import type { ContractInfo } from '../mexc/rest.js';
 import { formatAlert } from '../notify/format.js';
@@ -41,6 +43,7 @@ export class Runner extends EventEmitter {
   readonly gate = new AlertGate();
   readonly states = new Map<string, Setup>();
   readonly lifecycle: LifecycleManager;
+  readonly mochex: MochexSync;
   readonly chartsDir: string;
   readonly htf1h = new Map<string, Candle[]>();
   readonly htf4h = new Map<string, Candle[]>();
@@ -53,6 +56,8 @@ export class Runner extends EventEmitter {
     super();
     this.store = new CandleStore(d.cfg.historyBars);
     this.lifecycle = new LifecycleManager(d.db);
+    this.mochex = new MochexSync(d.db, d.cfg.mochex, m => this.log(m));
+    this.lifecycle.on('trade_opened', (trade: TradeRow) => { void this.mochex.openTrade(trade); });
     this.log = d.log ?? (m => console.log(m));
     this.chartsDir = d.chartsDir ?? (d.cfg.dbPath === ':memory:' ? '' : join(dirname(d.cfg.dbPath), 'charts'));
     if (this.chartsDir) {
@@ -293,6 +298,15 @@ export class Runner extends EventEmitter {
     for (const m of milestones) {
       this.emit('milestone', m);
       void this.dispatchMilestone(m);
+      if (m.type === 'tp1_hit') {
+        void this.mochex.updateTrade(m.trade, {
+          stop_loss: m.trade.entry_price,
+          take_profit: m.trade.tp2_price,
+          notes: `🎯 TP1 Hit (+1.5R secured) - SL moved to Break-Even (${m.trade.entry_price}), runner to TP2 (${m.trade.tp2_price})`,
+        });
+      } else if (m.type === 'tp2_hit' || m.type === 'sl_hit' || m.type === 'be_hit') {
+        void this.mochex.closeTrade(m.trade, m);
+      }
     }
   }
 

@@ -258,6 +258,51 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
         push('state_full', snapshot());
         return json(res, ok ? 200 : 404, { ok });
       }
+
+      // MOCHEX Trade Sync API
+      if (path === '/api/mochex/config' && req.method === 'GET') {
+        const c = runner.mochex.getConfig();
+        const maskedKey = c.apiKey ? (c.apiKey.length > 8 ? `${c.apiKey.slice(0, 6)}...${c.apiKey.slice(-4)}` : '******') : null;
+        return json(res, 200, {
+          apiUrl: c.apiUrl,
+          apiKey: maskedKey,
+          hasKey: !!c.apiKey,
+          enabled: c.enabled,
+          notify: c.notify,
+        });
+      }
+
+      if (path === '/api/mochex/config' && req.method === 'POST') {
+        const b = await readBody(req);
+        db.setMochexConfig({
+          apiUrl: typeof b.apiUrl === 'string' ? b.apiUrl : undefined,
+          apiKey: typeof b.apiKey === 'string' && b.apiKey !== '******' && !b.apiKey.includes('...') ? b.apiKey : undefined,
+          enabled: typeof b.enabled === 'boolean' ? b.enabled : undefined,
+          notify: typeof b.notify === 'boolean' ? b.notify : undefined,
+        });
+        const updated = runner.mochex.getConfig();
+        const maskedKey = updated.apiKey ? (updated.apiKey.length > 8 ? `${updated.apiKey.slice(0, 6)}...${updated.apiKey.slice(-4)}` : '******') : null;
+        return json(res, 200, {
+          ok: true,
+          apiUrl: updated.apiUrl,
+          apiKey: maskedKey,
+          hasKey: !!updated.apiKey,
+          enabled: updated.enabled,
+          notify: updated.notify,
+        });
+      }
+
+      if (path === '/api/mochex/test' && req.method === 'POST') {
+        const b = await readBody(req);
+        const testUrl = typeof b.apiUrl === 'string' ? b.apiUrl : undefined;
+        let testKey = typeof b.apiKey === 'string' ? b.apiKey : undefined;
+        if (testKey && (testKey === '******' || testKey.includes('...'))) {
+          testKey = db.getMochexConfig(cfg.mochex).apiKey ?? undefined;
+        }
+        const result = await runner.mochex.testConnection(testUrl, testKey);
+        return json(res, 200, result);
+      }
+
       if (path === '/api/settings' && req.method === 'POST') {
         const b = await readBody(req);
         if (typeof b.killzone === 'boolean') runner.setKillzone(b.killzone);
