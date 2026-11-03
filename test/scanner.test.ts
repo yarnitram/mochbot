@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   parseTopVolumeTickers,
   parseTopMemeTickers,
@@ -10,7 +10,8 @@ import {
 import { Db } from '../src/db/index.js';
 import { Runner } from '../src/engine/runner.js';
 import { loadConfig } from '../src/config.js';
-import { longScenario } from './fixtures.js';
+import { limitScenario } from './fixtures.js';
+afterEach(() => vi.restoreAllMocks());
 
 describe('Auto-Scanner', () => {
   it('defaults to blank watchlist (auto scanners off by default)', async () => {
@@ -49,7 +50,9 @@ describe('Auto-Scanner', () => {
   it('filters alert policy: auto coins skip WATCH, but fire ARMED and ENTRY_READY', async () => {
     const db = new Db(':memory:');
     db.setSetting('auto_scanner', '1');
-    const { candles } = longScenario();
+    const { candles, bias, cfg: strategy } = limitScenario();
+    db.setStrategyCfg('MOD-01E', strategy);
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(candles[0].t*1000);
     const cfg = loadConfig({ PAPER_MODE: 'true', USE_KILLZONE: 'false', EVAL_THROTTLE_SEC: '0', LTF_MINUTES: '1' } as any);
     const sentStages: string[] = [];
 
@@ -70,11 +73,13 @@ describe('Auto-Scanner', () => {
     runner.on('alert', ({ setup }) => sentStages.push(`${setup.symbol}:${setup.stage}`));
     await runner.start();
 
+    runner.htf1h.set('AUTO_USDT', bias);
+
     // 1. AUTO_USDT is added as auto
     expect(db.listWatch().some(w => w.symbol === 'AUTO_USDT' && w.is_auto === 1)).toBe(true);
 
     // Warm up history up to pullback start
-    const warm = candles.findIndex(c => c.t === candles[0].t + 35 * 900);
+    const warm = 1770;
     for (const c of candles.slice(0, warm)) runner.store.ingest('AUTO_USDT', c);
 
     // Ingest until WATCH stage
@@ -83,7 +88,7 @@ describe('Auto-Scanner', () => {
     expect(sentStages.some(s => s.startsWith('AUTO_USDT:WATCH'))).toBe(false);
 
     // Stream remaining bars (reaches ARMED then ENTRY_READY)
-    for (const c of candles.slice(warm)) runner.onKline('AUTO_USDT', c);
+    for (const c of candles.slice(warm)) { clock.mockReturnValue(c.t*1000); runner.onKline('AUTO_USDT', c); }
     const last = candles[candles.length - 1];
     runner.onKline('AUTO_USDT', { ...last, t: last.t + 60 });
 
@@ -91,6 +96,7 @@ describe('Auto-Scanner', () => {
     expect(sentStages).toContain('AUTO_USDT:ARMED');
     expect(sentStages).toContain('AUTO_USDT:ENTRY_READY');
     expect(sentStages).not.toContain('AUTO_USDT:WATCH');
+    runner.stop();
   });
 
   it('parseTopMemeTickers discovers meme contracts by conceptPlate and known bases, sorted by volume', () => {

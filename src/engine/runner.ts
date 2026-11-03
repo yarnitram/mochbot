@@ -5,8 +5,6 @@ import type { AppConfig } from '../config.js';
 import type { Db } from '../db/index.js';
 import { CandleStore } from '../data/candleStore.js';
 import type { Candle, Setup, StrategyCfg } from '../types.js';
-import { evaluate } from '../strategy/mod01.js';
-import { evaluateMod01d } from '../strategy/mod01d.js';
 import { evaluateMod01e } from '../strategy/mod01e.js';
 import { aggregate } from '../strategy/indicators.js';
 import { StrategyId, Mod01dCfg, DEFAULT_MOD01D_CFG, Mod01eCfg, DEFAULT_MOD01E_CFG } from '../types.js';
@@ -54,6 +52,10 @@ export class Runner extends EventEmitter {
   readonly htf4h = new Map<string, Candle[]>();
   contracts: ContractInfo[] = [];
   private lastEval = new Map<string, number>();
+  readonly lastTick = new Map<string, number>();
+  readonly feedErrors = new Map<string, string>();
+  private scanInFlight: Promise<string[]> | null = null;
+  private scanGeneration = 0;
   private log: (msg: string) => void;
   private autoScanTimer: NodeJS.Timeout | null = null;
 
@@ -62,9 +64,9 @@ export class Runner extends EventEmitter {
     this.store = new CandleStore(d.cfg.historyBars);
     this.lifecycle = new LifecycleManager(d.db);
     this.mochex = new MochexSync(d.db, d.cfg.mochex, m => this.log(m));
-    this.lifecycle.on('trade_opened', (trade: TradeRow) => { void this.mochex.openTrade(trade); });
+    this.lifecycle.on('trade_opened', (trade: TradeRow) => { if (!d.cfg.paperMode && !this.muted) void this.mochex.openTrade(trade); });
     this.log = d.log ?? (m => console.log(m));
-    this.chartsDir = d.chartsDir ?? (d.cfg.dbPath === ':memory:' ? '' : join(dirname(d.cfg.dbPath), 'charts'));
+    this.chartsDir = d.chartsDir ?? (d.db.path === ':memory:' ? '' : join(dirname(d.db.path), 'charts'));
     if (this.chartsDir) {
       try {
         mkdirSync(this.chartsDir, { recursive: true });
@@ -182,8 +184,7 @@ export class Runner extends EventEmitter {
   }
 
   getStrategyForSymbol(symbol: string): StrategyId {
-    const row = this.d.db.listWatch().find(w => w.symbol === symbol);
-    return (row?.strategy as StrategyId) || this.d.db.getGlobalStrategy();
+    return 'MOD-01E';
   }
 
   mod01dCfg(symbol: string): Mod01dCfg {
@@ -192,7 +193,8 @@ export class Runner extends EventEmitter {
   }
   mod01eCfg(symbol: string): Mod01eCfg {
     const custom = this.d.db.getStrategyCfg('MOD-01E') as Partial<Mod01eCfg>;
-    return { ...DEFAULT_MOD01E_CFG, ...custom };
+    const row = this.d.db.listWatch().find(w => w.symbol === symbol);
+    return { ...DEFAULT_MOD01E_CFG, ...custom, useKillzone: row?.killzone === null || row?.killzone === undefined ? this.killzoneGlobal : row.killzone === 1 };
   }
 
   strategyCfg(symbol: string): StrategyCfg {
@@ -211,6 +213,8 @@ export class Runner extends EventEmitter {
 
   // ---------- lifecycle ----------
   async start() {
+    this.d.db.setGlobalStrategy('MOD-01E');
+    for (const w of this.d.db.listWatch()) this.d.db.updateWatch(w.symbol, { strategy: 'MOD-01E' });
     try {
       this.contracts = await this.d.fetchContracts();
       this.log(`loaded ${this.contracts.length} USDT perpetual contracts`);
@@ -240,9 +244,16 @@ export class Runner extends EventEmitter {
   }
 
   private async activate(symbol: string) {
-    await this.backfill(symbol);
     this.d.feed.subscribe(symbol);
-    this.evaluateSymbol(symbol);
+    try {
+      await this.backfill(symbol);
+      this.feedErrors.delete(symbol);
+      this.evaluateSymbol(symbol);
+    } catch (e) {
+      this.feedErrors.set(symbol, (e as Error).message);
+      this.evaluateSymbol(symbol);
+      throw e;
+    }
   }
 
   async backfill(symbol: string) {
@@ -257,8 +268,8 @@ export class Runner extends EventEmitter {
   async backfillHtf(symbol: string) {
     try {
       const [c1h, c4h] = await Promise.all([
-        this.d.fetchKlines(symbol, 150, 'Hour1').catch(() => []),
-        this.d.fetchKlines(symbol, 150, 'Hour4').catch(() => []),
+        this.d.fetchKlines(symbol, 150, 'Min60'),
+        this.d.fetchKlines(symbol, 150, 'Hour4'),
       ]);
       if (c1h && c1h.length) this.htf1h.set(symbol, c1h);
       if (c4h && c4h.length) this.htf4h.set(symbol, c4h);
@@ -268,11 +279,18 @@ export class Runner extends EventEmitter {
   }
 
   async resyncAll() {
-    for (const w of this.d.db.listWatch()) await this.backfill(w.symbol).catch(e => this.log(`resync ${w.symbol}: ${(e as Error).message}`));
+    for (const w of this.d.db.listWatch()) await this.activate(w.symbol).catch(e => this.log(`resync ${w.symbol}: ${(e as Error).message}`));
   }
 
   // ---------- auto-scanner ----------
   async runAutoScan(limit = 50): Promise<string[]> {
+    if (this.scanInFlight) return this.scanInFlight;
+    this.scanInFlight = this.syncAutoScan(limit);
+    try { return await this.scanInFlight; } finally { this.scanInFlight = null; }
+  }
+
+  private async syncAutoScan(limit: number): Promise<string[]> {
+    const generation = this.scanGeneration;
     try {
       this.log(`auto-scanner: fetching multi-sector market feeds from MEXC...`);
       const [volumeSymbols, memeSymbols, aiSymbols, gameSymbols, gainersSymbols, losersSymbols] = await Promise.all([
@@ -283,6 +301,7 @@ export class Runner extends EventEmitter {
         (this.gainersScannerEnabled && this.d.fetchTopGainers) ? this.d.fetchTopGainers(this.minGainerVolume, 25) : Promise.resolve([]),
         (this.losersScannerEnabled && this.d.fetchTopLosers) ? this.d.fetchTopLosers(this.minGainerVolume, 25) : Promise.resolve([]),
       ]);
+      if (generation !== this.scanGeneration) return [];
 
       // Contract max leverage lookup map
       const contractLevMap = new Map(this.contracts.map(c => [c.symbol, c.maxLeverage ?? 50]));
@@ -325,6 +344,8 @@ export class Runner extends EventEmitter {
       const cap = Math.max(10, this.maxActiveCoins);
       const keepSymbols = candidateList.slice(0, cap);
       const keepSet = new Set<string>(keepSymbols);
+      // Discovery rotation must never disconnect a symbol with an open tracked trade.
+      for (const t of this.d.db.getActiveTrades()) keepSet.add(t.symbol);
 
       const removed = this.d.db.removeAutoWatchesExcept(keepSet);
       for (const s of removed) {
@@ -336,11 +357,12 @@ export class Runner extends EventEmitter {
         this.emit('state', { symbol: s, removed: true });
       }
 
-      const globalStrat = this.d.db.getGlobalStrategy();
+      const globalStrat = 'MOD-01E';
       for (const sym of keepSymbols) {
+        if (generation !== this.scanGeneration) return [];
         const tag = tagMap.get(sym) ?? 1;
         const added = this.d.db.addWatch(sym, tag, globalStrat);
-        if (added && !this.store.has(sym)) {
+        if (!this.store.has(sym) || this.feedErrors.has(sym)) {
           await this.activate(sym).catch(e => this.log(`activate ${sym}: ${(e as Error).message}`));
         }
       }
@@ -374,6 +396,7 @@ export class Runner extends EventEmitter {
   }
 
   resetAll(): { cleared: { watchlist: number; trades: number; alerts: number; settings: number }; chartsDeleted: number } {
+    this.scanGeneration++;
     const list = this.d.db.listWatch();
     for (const w of list) {
       this.d.feed.unsubscribe(w.symbol);
@@ -415,6 +438,8 @@ export class Runner extends EventEmitter {
   }
 
   clearWatchlist(): { cleared: number; msg: string } {
+    if (this.d.db.getActiveTrades().length) throw new Error('Close active tracked trades before clearing their market feeds');
+    this.scanGeneration++;
     const list = this.d.db.listWatch();
     for (const w of list) {
       this.d.feed.unsubscribe(w.symbol);
@@ -425,13 +450,8 @@ export class Runner extends EventEmitter {
       this.emit('state', { symbol: w.symbol, removed: true });
     }
     const count = this.d.db.clearWatchlist();
-    this.setAutoScanner(false);
-    this.setMemeScanner(false);
-    this.setAiScanner(false);
-    this.setGameScanner(false);
-    this.setGainersScanner(false);
-    this.setLosersScanner(false);
-    this.setUltraLevScanner(false);
+    for (const key of ['auto_scanner','meme_scanner','ai_scanner','game_scanner','gainers_scanner','losers_scanner','ultra_lev_scanner']) this.d.db.setSetting(key, '0');
+    this.ensureAutoScanTimer();
     this.emit('watchlist_updated');
     this.log(`cleared watchlist (${count} tokens removed)`);
     return { cleared: count, msg: `Cleared ${count} tokens from watchlist` };
@@ -439,6 +459,7 @@ export class Runner extends EventEmitter {
 
   removeSymbol(raw: string): { ok: boolean; msg: string } {
     const symbol = this.normalize(raw);
+    if (this.d.db.getActiveTrades().some(t => t.symbol === symbol)) return { ok:false, msg:'Close active tracked trades before removing this market feed' };
     const removed = this.d.db.removeWatch(symbol);
     this.d.feed.unsubscribe(symbol);
     this.store.drop(symbol);
@@ -472,24 +493,35 @@ export class Runner extends EventEmitter {
 
   onKline(symbol: string, c: Candle) {
     if (!this.d.db.listWatch().some(w => w.symbol === symbol)) return;
+    const latest = this.store.forming(symbol) ?? this.store.closed(symbol).at(-1);
+    if (latest && c.t < latest.t) return;
+    this.lastTick.set(symbol, Date.now());
     const closed = this.store.ingest(symbol, c);
     this.updateHtfBars(symbol, c);
     const now = Date.now();
     const last = this.lastEval.get(symbol) ?? 0;
-    if (closed || now - last >= this.d.cfg.evalThrottleSec * 1000) this.evaluateSymbol(symbol);
+    if (closed || !this.states.has(symbol)) this.evaluateSymbol(symbol);
+    else if (now - last >= this.d.cfg.evalThrottleSec * 1000) {
+      const setup = this.states.get(symbol)!;
+      setup.price = c.c;
+      this.lastEval.set(symbol, now);
+      this.emit('state', { symbol, setup });
+    }
 
     // Track active trades on price movement
-    const milestones = this.lifecycle.onPrice(symbol, c);
+    // Incoming candles have cumulative highs/lows from before the entry or BE move.
+    // Lifecycle sees the observed price only, preventing retroactive target/stop hits.
+    const milestones = this.lifecycle.onPrice(symbol, { ...c, o: c.c, h: c.c, l: c.c });
     for (const m of milestones) {
       this.emit('milestone', m);
       void this.dispatchMilestone(m);
-      if (m.type === 'tp1_hit') {
+      if (!this.d.cfg.paperMode && !this.muted && m.type === 'tp1_hit') {
         void this.mochex.updateTrade(m.trade, {
           stop_loss: m.trade.entry_price,
           take_profit: m.trade.tp2_price,
           notes: `🎯 TP1 Hit (+1.5R secured) - SL moved to Break-Even (${m.trade.entry_price}), runner to TP2 (${m.trade.tp2_price})`,
         });
-      } else if (m.type === 'tp2_hit' || m.type === 'sl_hit' || m.type === 'be_hit') {
+      } else if (!this.d.cfg.paperMode && !this.muted && (m.type === 'tp2_hit' || m.type === 'sl_hit' || m.type === 'be_hit')) {
         void this.mochex.closeTrade(m.trade, m);
       }
     }
@@ -497,29 +529,15 @@ export class Runner extends EventEmitter {
 
   evaluateSymbol(symbol: string): Setup | null {
     const closed = this.store.closed(symbol);
-    if (closed.length < 20) return null;
     this.lastEval.set(symbol, Date.now());
 
-    const strategy = this.getStrategyForSymbol(symbol);
-    let setup: Setup;
-
-    if (strategy === 'MOD-01D') {
-      let c1h = this.htf1h.get(symbol);
-      let c4h = this.htf4h.get(symbol);
-      if (!c1h || c1h.length < 10) c1h = aggregate(closed, 60);
-      if (!c4h || c4h.length < 5) c4h = aggregate(closed, 240);
-      setup = evaluateMod01d(symbol, closed, this.store.forming(symbol), c1h, c4h, this.mod01dCfg(symbol));
-      setup.strategyId = 'MOD-01D';
-    } else if (strategy === 'MOD-01E') {
-      const cfg = this.mod01eCfg(symbol);
-      let cBias = cfg.biasTfMinutes === 240 ? this.htf4h.get(symbol) : this.htf1h.get(symbol);
-      if (!cBias || cBias.length < 10) cBias = aggregate(closed, cfg.biasTfMinutes);
-      setup = evaluateMod01e(symbol, closed, this.store.forming(symbol), cBias, cfg);
-      setup.strategyId = 'MOD-01E';
-    } else {
-      setup = evaluate(symbol, closed, this.store.forming(symbol), this.strategyCfg(symbol));
-      setup.strategyId = 'MOD-01';
-    }
+    const cfg = this.mod01eCfg(symbol);
+    const cBias = cfg.biasTfMinutes === 240 ? this.htf4h.get(symbol) : this.htf1h.get(symbol);
+    const setup = evaluateMod01e(symbol, closed, this.store.forming(symbol), cBias, cfg);
+    if (this.feedErrors.has(symbol)) setup.reason = `History error: ${this.feedErrors.get(symbol)}`;
+    const newest = this.store.forming(symbol) ?? closed.at(-1);
+    const stale = !newest || Date.now() / 1000 - newest.t > 180;
+    if (stale) { setup.stage = 'IDLE'; setup.reason = 'Market candles are stale or unavailable'; }
     if (setup.stage === 'ENTRY_READY' && setup.entry && setup.sl && setup.tp1 && setup.tp2 && setup.direction) {
       const contract = this.contracts.find(c => c.symbol === symbol);
       const capital = this.d.db.getAccountCapital();
@@ -529,6 +547,8 @@ export class Runner extends EventEmitter {
       setup.sizing = computePositionSizing(setup.entry, setup.sl, setup.tp1, setup.tp2, setup.direction, capital, riskPerTrade, maxLev, cSize);
     }
     const prev = this.states.get(symbol);
+    if (!stale && setup.orderStatus && setup.setupId) this.d.db.saveLimitOrder(setup);
+    if (!stale && closed.length >= 20 && !this.feedErrors.has(symbol)) this.d.db.reconcileLimitOrders(setup);
     this.states.set(symbol, setup);
     if (!prev || prev.stage !== setup.stage || prev.setupId !== setup.setupId || Math.abs(prev.price - setup.price) > 0) this.emit('state', { symbol, setup });
 
@@ -539,7 +559,7 @@ export class Runner extends EventEmitter {
       return setup;
     }
 
-    if (!this.muted && this.gate.shouldAlert(setup)) {
+    if (this.gate.shouldAlert(setup)) {
       void this.dispatch(setup);
     }
     return setup;
@@ -603,7 +623,7 @@ export class Runner extends EventEmitter {
       this.lifecycle.onEntryReady(setup, chartFile);
     }
 
-    if (this.d.cfg.paperMode) {
+    if (this.d.cfg.paperMode || this.muted) {
       this.log(`[paper] ${setup.symbol} ${setup.stage} ${setup.direction}`);
       return;
     }
@@ -618,7 +638,7 @@ export class Runner extends EventEmitter {
   }
 
   private async dispatchMilestone(m: LifecycleEvent) {
-    if (this.d.cfg.paperMode) {
+    if (this.d.cfg.paperMode || this.muted) {
       this.log(`[milestone:paper] ${m.message.split('\n')[0]}`);
       return;
     }
@@ -673,8 +693,9 @@ export class Runner extends EventEmitter {
     const state = this.states.get(trade.symbol);
     const currentPrice = state?.price ?? trade.entry_price;
     const isLong = trade.direction === 'LONG';
-    const risk = Math.abs(trade.entry_price - trade.sl_price) || 1;
-    const currentR = Number((isLong ? (currentPrice - trade.entry_price) / risk : (trade.entry_price - currentPrice) / risk).toFixed(2));
+    const risk = Math.abs(trade.entry_price - (trade.initial_sl_price ?? trade.sl_price)) || 1;
+    const rawR = (isLong ? currentPrice-trade.entry_price : trade.entry_price-currentPrice)/risk;
+    const currentR = Number((trade.status === 'TP1_HIT' ? Math.abs(trade.tp1_price-trade.entry_price)/risk/2+rawR/2 : rawR).toFixed(2));
     const notional = trade.notional ?? ((trade.margin ?? 1) * (trade.leverage ?? 50));
     const slDistPct = risk / Math.max(1e-8, trade.entry_price);
     const currentPnlUsd = Number((currentR * (notional * slDistPct)).toFixed(2));
@@ -689,7 +710,7 @@ export class Runner extends EventEmitter {
     this.log(closeMsg);
 
     try {
-      void this.mochex.closeTrade(trade, {
+      if (!this.d.cfg.paperMode && !this.muted) void this.mochex.closeTrade(trade, {
         type: 'manual_close',
         trade,
         price: currentPrice,

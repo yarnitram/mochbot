@@ -180,6 +180,9 @@ export interface PositionSizing {
 }
 
 export interface Setup {
+  reason?: string;
+  orderStatus?: 'PENDING' | 'TOUCHED' | 'EXPIRED' | 'INVALIDATED';
+  expiresAt?: number;
   symbol: string;
   stage: Stage;
   direction: Direction | null;

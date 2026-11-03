@@ -20,8 +20,9 @@ export class CandleStore {
   /** Replace history (REST backfill). Candles at or after the current minute stay "forming". */
   setHistory(symbol: string, candles: Candle[], nowSec = Math.floor(Date.now() / 1000)) {
     const cutoff = Math.floor(nowSec / 60) * 60;
-    const closed = candles.filter(c => c.t < cutoff);
-    const forming = candles.filter(c => c.t >= cutoff).pop() ?? null;
+    const valid = [...new Map(candles.filter(c => [c.t,c.o,c.h,c.l,c.c,c.v].every(Number.isFinite) && c.t % 60 === 0 && c.l <= Math.min(c.o,c.c) && c.h >= Math.max(c.o,c.c)).map(c => [c.t,c])).values()].sort((a,b) => a.t-b.t);
+    const closed = valid.filter(c => c.t < cutoff);
+    const forming = valid.filter(c => c.t === cutoff).pop() ?? null;
     this.m.set(symbol, { closed: closed.slice(-this.maxBars), forming });
   }
 

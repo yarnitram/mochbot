@@ -18,6 +18,10 @@ export function formatAlert(s: Setup): string {
   const dir = s.direction === 'LONG' ? 'LONG 🟢' : 'SHORT 🔴';
   const stratBadge = s.strategyId ? `[${s.strategyId}] ` : '';
   const lines: string[] = [`${ICON[s.stage] ?? ''} ${stratBadge}${s.symbol} ${dir}`, LABEL[s.stage] ?? s.stage];
+  if (s.strategyId === 'MOD-01E') {
+    lines[1] = s.stage === 'ARMED' ? 'PENDING LIMIT: ready to place' : s.stage === 'ENTRY_READY' ? 'SIMULATED LIMIT TOUCH' : s.reason ?? s.stage;
+    if (s.reason) lines.push(s.reason);
+  }
   if (s.zone) lines.push(`Zone: ${p(s.zone.bottom)} - ${p(s.zone.top)}`);
   lines.push(`Price: ${p(s.price)}`);
   if (s.stage === 'WATCH' && s.distanceAtr !== null) {
@@ -26,7 +30,10 @@ export function formatAlert(s: Setup): string {
   }
   if (s.stage === 'ARMED') {
     const tfBreak = (s.strategyId === 'MOD-01D' || s.strategyId === 'MOD-01E') ? '5m' : `${s.ltfMinutes ?? 1}m`;
-    if (s.needBreak !== null) lines.push(`Need ${tfBreak} close ${s.direction === 'LONG' ? 'above' : 'below'}: ${p(s.needBreak)}`);
+    if (s.strategyId === 'MOD-01E') {
+      lines.push(`Limit entry: ${p(s.entry)}`, `SL: ${p(s.sl)}`, `TP1: ${p(s.tp1)}`, `TP2: ${p(s.tp2)}`);
+      if (s.expiresAt) lines.push(`Expires: ${new Date(s.expiresAt * 1000).toISOString()}`);
+    } else if (s.needBreak !== null) lines.push(`Need ${tfBreak} close ${s.direction === 'LONG' ? 'above' : 'below'}: ${p(s.needBreak)}`);
     lines.push(`Bars since tap: ${s.barsSinceTap ?? '-'} / window`);
   }
   if (s.stage === 'ENTRY_READY') {

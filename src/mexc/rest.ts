@@ -77,7 +77,7 @@ const limiter = new Limiter(8, 2000); // MEXC allows 20 / 2s; stay well below
 
 async function getJson(path: string): Promise<any> {
   await limiter.take();
-  const res = await fetch(BASE + path, { headers: { accept: 'application/json' } });
+  const res = await fetch(BASE + path, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(15_000) });
   if (!res.ok) throw new Error(`MEXC ${path} -> HTTP ${res.status}`);
   const json: any = await res.json();
   if (json && json.success === false) throw new Error(`MEXC ${path} -> ${json.code} ${json.message ?? ''}`);

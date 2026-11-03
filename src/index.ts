@@ -45,30 +45,31 @@ ws.on('error_log', e => console.log('ws error:', (e as Error).message));
 
 const here = dirname(fileURLToPath(import.meta.url));
 const webDir = join(here, '..', 'web');
-startWeb(runner, db, cfg, webDir);
-
-ws.start();
-await runner.start();
-
-if (telegram) telegram.poll((cmd, args) => runner.handleCommand(cmd, args), e => console.log('telegram poll error:', (e as Error).message));
-
-console.log(
-  `mochbot up | mode=${cfg.paperMode ? 'PAPER (alerts logged, not sent)' : 'LIVE'} | channels=${notifiers.map(n => n.name).join(',') || 'none'} | dashboard :${cfg.port}`,
-);
+const server = startWeb(runner, db, cfg, webDir);
 
 const shutdown = () => {
   runner.stop();
   ws.stop();
   telegram?.stop();
+  server.close();
   db.close();
-  process.exit(0);
+  process.exit(process.exitCode ?? 0);
 };
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 process.on('uncaughtException', err => {
   console.error('[FATAL] uncaughtException:', err);
+  process.exitCode = 1;
+  shutdown();
 });
 process.on('unhandledRejection', err => {
   console.error('[FATAL] unhandledRejection:', err);
+  process.exitCode = 1;
+  shutdown();
 });
+
+ws.start();
+await runner.start();
+if (telegram) telegram.poll((cmd, args) => runner.handleCommand(cmd, args), e => console.log('telegram poll error:', (e as Error).message));
+console.log(`mochbot up | strategy=MOD-01E | mode=${cfg.paperMode ? 'PAPER' : 'ALERTS'} | dashboard :${cfg.port}`);

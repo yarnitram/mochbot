@@ -1,5 +1,17 @@
 import type { Candle } from '../types.js';
 
+/** Only complete, contiguous buckets can confirm structure. Input is closed 1m bars. */
+export function aggregateClosed(candles: Candle[], minutes: number): Candle[] {
+  const counts = new Map<number, Set<number>>();
+  for (const c of candles) {
+    const t = Math.floor(c.t / (minutes * 60)) * minutes * 60;
+    if (!counts.has(t)) counts.set(t, new Set());
+    counts.get(t)!.add(c.t);
+  }
+  const end = (candles.at(-1)?.t ?? -60) + 60;
+  return aggregate(candles, minutes).filter(c => counts.get(c.t)?.size === minutes && c.t + minutes * 60 <= end);
+}
+
 /** Wilder ATR, same seeding as Pine ta.atr (SMA of first `len` TRs, then RMA). NaN before warm-up. */
 export function atr(candles: Candle[], len = 14): number[] {
   const out: number[] = new Array(candles.length).fill(NaN);

@@ -109,10 +109,10 @@ describe('Multi-Strategy Database & Configuration', () => {
   it('persists strategy per coin and global strategy setting in SQLite', () => {
     const db = new Db(':memory:');
 
-    // Global strategy defaults to MOD-01
-    expect(db.getGlobalStrategy()).toBe('MOD-01');
+    // Legacy records remain readable, but the active runtime is MOD-01E only.
+    expect(db.getGlobalStrategy()).toBe('MOD-01E');
     db.setGlobalStrategy('MOD-01D');
-    expect(db.getGlobalStrategy()).toBe('MOD-01D');
+    expect(db.getGlobalStrategy()).toBe('MOD-01E');
 
     // Watchlist persistence with strategy assignment
     db.addWatch('BTC_USDT', false, 'MOD-01D');

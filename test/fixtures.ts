@@ -1,4 +1,21 @@
 import type { Candle } from '../src/types.js';
+import { DEFAULT_MOD01E_CFG } from '../src/types.js';
+
+/** Deterministic ranging market, bullish historical bias, and a later CHoCH/retest. */
+export function limitScenario() {
+  const candles: Candle[] = [];
+  let price = 100, seed = 42;
+  for (let i = 0; i < 120; i++) {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    const next = price + (seed / 4294967296 - .5) * 10;
+    candles.push(...expand15(T0 + i * 900, { o: price, h: Math.max(price, next) + .1 + i * .001,
+      l: Math.min(price, next) - .2 - i * .002, c: next }));
+    price = next;
+  }
+  const bias = [100,102,105,102,101,104,108].map((p,i) => ({t:T0-(7-i)*3600,o:p,h:p+1,l:p-1,c:p,v:1}));
+  const cfg = { ...DEFAULT_MOD01E_CFG, biasPivotLen:1, alignPivotLen:1, entryPivotLen:1, requireAlignment:false, useKillzone:false };
+  return { candles, bias, cfg };
+}
 
 /** 2024-01-01 00:00:00 UTC */
 export const T0 = 1704067200;

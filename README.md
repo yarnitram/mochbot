@@ -1,5 +1,7 @@
 # Mochbot
 
+**1.0 rebuild:** the active scanner now uses MOD-01E exclusively, with the new Limit Desk dashboard, chronological confirmation and a persistent limit ledger. See [rebuild behavior and Proxmox upgrade notes](docs/REBUILD.md). The earlier MOD-01 overview below describes the retained historical implementation.
+
 Alert-only scanner for **MEXC USDT-perpetual futures** that runs **Phantom SMC MOD-01 (Pro-Trend Confirmation)** on a watchlist and notifies you on **Telegram** and **Discord**. A local **dashboard** shows each coin's stage live.
 
 No trading API keys. The bot only reads public MEXC market data and never places orders.

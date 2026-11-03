@@ -35,6 +35,7 @@ export interface TradeRow {
   direction: string;
   entry_price: number;
   sl_price: number;
+  initial_sl_price?: number;
   tp1_price: number;
   tp2_price: number;
   status: TradeStatus;
@@ -92,7 +93,7 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as typeof
 export class Db {
   private db: DatabaseSyncT;
 
-  constructor(path: string) {
+  constructor(readonly path: string) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
     this.db.exec(`
@@ -120,6 +121,11 @@ export class Db {
       CREATE INDEX IF NOT EXISTS alerts_ts ON alerts(ts DESC);
       CREATE INDEX IF NOT EXISTS alerts_sym ON alerts(symbol);
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS limit_orders (
+        setup_id TEXT NOT NULL, symbol TEXT NOT NULL, status TEXT NOT NULL,
+        updated_at INTEGER NOT NULL, payload TEXT NOT NULL,
+        PRIMARY KEY(symbol, setup_id)
+      );
 
       CREATE TABLE IF NOT EXISTS trades (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -145,6 +151,9 @@ export class Db {
       CREATE INDEX IF NOT EXISTS trades_status ON trades(status);
       CREATE INDEX IF NOT EXISTS trades_symbol ON trades(symbol);
     `);
+    try { this.db.exec('ALTER TABLE trades ADD COLUMN initial_sl_price REAL'); } catch {}
+    this.db.exec(`UPDATE trades SET initial_sl_price = CASE WHEN status IN ('TP1_HIT','CLOSED_BE','CLOSED_TP2')
+      THEN entry_price - (tp1_price-entry_price)/3.0 ELSE sl_price END WHERE initial_sl_price IS NULL`);
 
     // Safe migration for existing databases
     try {
@@ -194,7 +203,7 @@ export class Db {
     return this.db.prepare("SELECT symbol, killzone, sensitivity, watch_distance, COALESCE(is_auto, 0) as is_auto, COALESCE(strategy, 'MOD-01') as strategy, added_at FROM watchlist ORDER BY is_auto ASC, symbol ASC").all() as unknown as WatchRow[];
   }
 
-  addWatch(symbol: string, isAuto: boolean | number = false, strategy: StrategyId = 'MOD-01'): boolean {
+  addWatch(symbol: string, isAuto: boolean | number = false, strategy: StrategyId = 'MOD-01E'): boolean {
     const existing = this.db.prepare('SELECT symbol, is_auto, strategy FROM watchlist WHERE symbol = ?').get(symbol) as { symbol: string; is_auto: number; strategy: string } | undefined;
     const isAutoVal = typeof isAuto === 'number' ? isAuto : isAuto ? 1 : 0;
     if (existing) {
@@ -209,6 +218,7 @@ export class Db {
   }
 
   resetAll(): { watchlist: number; trades: number; alerts: number; settings: number } {
+    this.db.prepare('DELETE FROM limit_orders').run();
     const w = this.db.prepare('DELETE FROM watchlist').run();
     const t = this.db.prepare('DELETE FROM trades').run();
     const a = this.db.prepare('DELETE FROM alerts').run();
@@ -270,6 +280,29 @@ export class Db {
   }
 
   // ---------- Settings ----------
+  saveLimitOrder(s: Setup) {
+    if (!s.setupId || !s.orderStatus) return;
+    this.db.prepare(`INSERT INTO limit_orders(setup_id,symbol,status,updated_at,payload) VALUES(?,?,?,?,?)
+      ON CONFLICT(symbol,setup_id) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at,payload=excluded.payload
+      WHERE limit_orders.status='PENDING'`).run(s.setupId, s.symbol, s.orderStatus, s.ts, JSON.stringify(s));
+  }
+  reconcileLimitOrders(s: Setup) {
+    const rows = this.db.prepare("SELECT * FROM limit_orders WHERE symbol=? AND status='PENDING'").all(s.symbol) as any[];
+    for (const row of rows) {
+      if (row.setup_id === s.setupId && s.orderStatus === 'PENDING') continue;
+      const previous = JSON.parse(row.payload) as Setup;
+      const expired = previous.expiresAt !== undefined && s.ts >= previous.expiresAt;
+      this.saveLimitOrder({ ...previous, ts:s.ts, orderStatus:expired?'EXPIRED':'INVALIDATED',
+        reason:expired?'Limit deadline passed':'Plan superseded or no longer confirmed in available history' });
+    }
+  }
+  listLimitOrders(): { setup_id: string; symbol: string; status: string; updated_at: number; payload: string }[] {
+    return this.db.prepare('SELECT * FROM limit_orders ORDER BY updated_at DESC LIMIT 250').all() as any;
+  }
+  hasTradeSetup(setupId: string): boolean {
+    return !!this.db.prepare('SELECT id FROM trades WHERE setup_id=?').get(setupId);
+  }
+
   getSetting(key: string): string | null {
     const r = this.db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
     return r ? r.value : null;
@@ -312,8 +345,7 @@ export class Db {
   }
 
   getGlobalStrategy(): StrategyId {
-    const v = this.getSetting('global_strategy');
-    return v === 'MOD-01D' ? 'MOD-01D' : v === 'MOD-01E' ? 'MOD-01E' : 'MOD-01';
+    return 'MOD-01E';
   }
 
   setGlobalStrategy(strat: StrategyId): void {
@@ -337,7 +369,7 @@ export class Db {
   }
 
   // ---------- Alerts ----------
-  insertAlert(setup: Setup, delivered: boolean): number {
+  insertAlert(setup: Setup, delivered = false): number {
     const stratId = setup.strategyId || 'MOD-01';
     const r = this.db
       .prepare('INSERT INTO alerts(ts, symbol, stage, direction, setup_id, delivered, payload, strategy_id) VALUES (?,?,?,?,?,?,?,?)')
@@ -396,7 +428,9 @@ export class Db {
         notional,
         strategyId
       );
-    return Number(r.lastInsertRowid);
+    const id = Number(r.lastInsertRowid);
+    this.db.prepare('UPDATE trades SET initial_sl_price=? WHERE id=?').run(trade.sl_price, id);
+    return id;
   }
 
   setTradeChart(id: number, chartFile: string): void {

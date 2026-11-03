@@ -1,0 +1,1895 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mochbot Legacy Dashboard</title>
+<style>
+  #tab-strat-mod01, #tab-strat-mod01d { display:none!important; }
+  :root { --bg:#0e1116; --card:#161b22; --line:#262d38; --txt:#e6edf3; --mut:#8b98a8; --blue:#3b82f6; --amber:#f59e0b; --green:#22c55e; --red:#ef4444; --indigo:#6366f1; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui,Segoe UI,sans-serif; background:var(--bg); color:var(--txt); }
+  header { display:flex; gap:10px; align-items:center; padding:12px 20px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  h1 { font-size:17px; margin:0; margin-right:12px; letter-spacing:-.01em; }
+  
+  /* Navigation Tabs */
+  .nav-tabs { display:flex; gap:6px; margin-right:auto; }
+  .nav-btn { background:#161b22; border:1px solid var(--line); color:var(--mut); padding:5px 12px; border-radius:6px; font-weight:600; font-size:12px; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:5px; }
+  .nav-btn:hover { color:var(--txt); border-color:#38444d; }
+  .nav-btn.active { background:#21262d; color:#fff; border-color:var(--blue); }
+
+  .pill { padding:3px 10px; border-radius:99px; font-size:12px; border:1px solid var(--line); color:var(--mut); display:inline-flex; align-items:center; gap:5px; cursor:pointer; }
+  .pill input { cursor:pointer; margin:0; }
+  .pill.paper { color:var(--amber); border-color:var(--amber); }
+  .pill.live { color:var(--green); border-color:var(--green); }
+  main { padding:20px; max-width:1240px; margin:auto; display:grid; gap:20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
+  h2 { font-size:13px; margin:0 0 10px; color:var(--mut); font-weight:600; text-transform:uppercase; letter-spacing:.05em; display:flex; justify-content:space-between; align-items:center; }
+  table { width:100%; border-collapse:collapse; }
+  th,td { text-align:left; padding:8px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  th { color:var(--mut); font-weight:500; font-size:12px; }
+  .badge { padding:2px 8px; border-radius:6px; font-size:11px; font-weight:600; display:inline-block; }
+  .badge.IDLE { background:#2a313c; color:var(--mut); }
+  .badge.WATCH { background:#1d3a6e; color:#9ec1ff; }
+  .badge.ARMED { background:#6b4a0a; color:#ffd27a; animation:pulse 2s infinite; }
+  .badge.ENTRY_READY { background:#14532d; color:#86efac; font-weight:bold; }
+  .badge.OPEN { background:#1e293b; color:#94a3b8; border:1px solid #334155; }
+  .badge.TP1_HIT { background:#713f12; color:#fde047; font-weight:bold; }
+  .badge.CLOSED_TP2 { background:#14532d; color:#86efac; }
+  .badge.CLOSED_BE { background:#0369a1; color:#7dd3fc; }
+  .badge.CLOSED_SL { background:#7f1d1d; color:#fca5a5; }
+  .badge.CLOSED_MANUAL { background:#78350f; color:#fde68a; }
+  .badge-tag { font-size:10px; padding:1px 5px; border-radius:4px; font-weight:bold; margin-right:4px; }
+  .tag-pinned { background:#334155; color:#cbd5e1; }
+  .tag-auto { background:#1e1b4b; color:#c7d2fe; border:1px solid #4338ca; }
+  .tag-inactive { background:#1f2937; color:#6b7280; }
+  .long { color:var(--green); font-weight:600; } .short { color:var(--red); font-weight:600; }
+  button, input, select { background:#0b0f14; color:var(--txt); border:1px solid var(--line); border-radius:6px; padding:6px 10px; font:inherit; }
+  button { cursor:pointer; } button:hover { border-color:var(--blue); }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .sugg { position:relative; }
+  #sugg { position:absolute; top:100%; left:0; background:var(--card); border:1px solid var(--line); border-radius:6px; z-index:5; max-height:240px; overflow:auto; min-width:200px; }
+  #sugg div { padding:6px 10px; cursor:pointer; } #sugg div:hover { background:#222a35; }
+  .mut { color:var(--mut); } small { color:var(--mut); }
+  .x { color:var(--red); background:none; border:none; padding:2px 6px; }
+  .btn-test { padding:2px 8px; font-size:11px; }
+  .coin-link { color:#58a6ff; font-weight:bold; text-decoration:none; cursor:pointer; }
+  .coin-link:hover { text-decoration:underline; }
+
+  /* Emergency Flashing Siren Banner */
+  .alarm-banner {
+    background:#7f1d1d; border:1px solid var(--red); color:#fff; border-radius:8px; padding:12px 18px;
+    display:flex; align-items:center; justify-content:space-between; animation:banner-glow 1s infinite alternate;
+  }
+  .alarm-btn { background:#dc2626; color:#fff; border:1px solid #fff; font-weight:bold; padding:6px 14px; border-radius:6px; }
+  .alarm-btn:hover { background:#b91c1c; }
+  @keyframes banner-glow { 0% { background:#7f1d1d; box-shadow:0 0 10px rgba(239,68,68,0.4); } 100% { background:#991b1b; box-shadow:0 0 20px rgba(239,68,68,0.8); } }
+  @keyframes pulse { 0% { opacity: 0.8; } 50% { opacity: 1; } 100% { opacity: 0.8; } }
+
+  .stat-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:12px; margin-bottom:6px; }
+  .stat-box { background:#0b0f14; border:1px solid var(--line); border-radius:8px; padding:10px 14px; }
+  .stat-val { font-size:18px; font-weight:bold; margin-top:4px; }
+  .stat-val.pos { color:var(--green); } .stat-val.neg { color:var(--red); }
+
+  /* Gallery Grid */
+  .chart-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); gap:16px; margin-top:12px; }
+  .chart-card { background:#0b0f14; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .chart-card-header { padding:8px 12px; display:flex; justify-content:space-between; align-items:center; background:#161b22; border-bottom:1px solid var(--line); }
+  .chart-img { width:100%; height:auto; display:block; cursor:pointer; }
+  .chart-img:hover { opacity:0.95; }
+
+  /* Modal */
+  .modal { position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:100; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .modal img { max-width:95vw; max-height:90vh; border-radius:6px; box-shadow:0 0 24px rgba(0,0,0,0.9); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Mochbot</h1>
+  <div class="nav-tabs">
+    <button id="nav-scanner" class="nav-btn active">📡 Live Scanner</button>
+    <button id="nav-analytics" class="nav-btn">📊 Coin Analytics</button>
+    <button id="nav-journal" class="nav-btn" style="display:none;">📔 Journal</button>
+  </div>
+  <span id="mode" class="pill">-</span>
+  <span id="chan" class="pill">-</span>
+  <label class="pill" title="Filter entries to London (07-11 UTC) and NY (13-17 UTC)"><input type="checkbox" id="kz"> Killzones</label>
+  <label class="pill" title="Track Top 50 MEXC volume perpetuals automatically"><input type="checkbox" id="scanner"> 📈 Vol</label>
+  <label class="pill" title="Track Top 50 MEXC meme perpetuals automatically"><input type="checkbox" id="meme-scanner"> 🐶 Memes</label>
+  <label class="pill" title="Track Top 35 MEXC AI perpetuals automatically"><input type="checkbox" id="ai-scanner"> 🤖 AI</label>
+  <label class="pill" title="Track Top 35 MEXC Gaming & Metaverse perpetuals"><input type="checkbox" id="game-scanner"> 🎮 Gaming</label>
+  <label class="pill" title="Track Top 25 gainers with >=$5M 24h volume"><input type="checkbox" id="gainers-scanner"> 🚀 Gainers</label>
+  <label class="pill" title="Track Top 25 losers/dips with >=$5M 24h volume"><input type="checkbox" id="losers-scanner"> 🩸 Losers</label>
+  <label class="pill" title="Only track high-leverage perpetuals (200x-500x)"><input type="checkbox" id="ultra-lev-scanner"> ⚡ 200x–500x</label>
+  <button id="btn-open-scanner-modal" class="btn-test pill" style="background:#1e293b; border-color:#475569; color:#f1f5f9; cursor:pointer;" title="Configure Auto-Scanner Feeds, Volume Thresholds, & Leverage Tiers">⚙️ Scanner Feeds</button>
+  <label class="pill" title="Play audible chime on ARMED and siren on ENTRY_READY"><input type="checkbox" id="sound" checked> 🔊 Alarm</label>
+  <button id="test-audio" class="btn-test pill" title="Test browser audio synthesizer">🔔 Test Sound</button>
+  <label class="pill"><input type="checkbox" id="mute"> Mute</label>
+  <span id="conn" class="pill">connecting</span>
+</header>
+
+<main>
+  <!-- Emergency Alarm Banner -->
+  <div id="alarm-banner" class="alarm-banner" hidden>
+    <div>
+      <span style="font-size:16px; margin-right:8px;">🚨</span>
+      <b id="alarm-text">ENTRY READY DETECTED</b>
+    </div>
+    <button id="silence-btn" class="alarm-btn">🔕 Silence Alarm</button>
+  </div>
+
+  <!-- VIEW 1: LIVE SCANNER & WATCHLIST -->
+  <div id="view-scanner" class="view-pane">
+    <div class="card" style="margin-bottom:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
+        <h2 style="margin:0;">Account &amp; Performance (Phantom SMC MOD-01)</h2>
+        <div class="row">
+          <button id="strategy-settings-btn" style="padding:4px 10px; font-size:11px; background:#1f2937; border-color:#374151;">⚙️ Strategies</button>
+          <button id="account-settings-btn" style="padding:4px 10px; font-size:11px;">⚙️ Capital &amp; Risk</button>
+          <button id="mochex-sync-btn" style="padding:4px 10px; font-size:11px; background:#4c1d95; border-color:#7c3aed; color:#c4b5fd;">🔗 MOCHEX Sync</button>
+          <button id="btn-system-reset" onclick="openResetModal()" style="padding:4px 10px; font-size:11px; background:#450a0a; border:1px solid #ef4444; color:#f87171; cursor:pointer;" title="Factory reset all database tables, trades, watchlist, and charts">🔄 Reset All</button>
+        </div>
+      </div>
+      <div class="stat-grid">
+        <div class="stat-box">
+          <small class="mut">Account Equity</small>
+          <div id="stat-equity" class="stat-val pos">$1,000.00</div>
+          <small id="stat-equity-sub" class="mut" style="font-size:11px;">Capital: $1,000 | +0.00%</small>
+        </div>
+        <div class="stat-box">
+          <small class="mut">Total Realized P&amp;L</small>
+          <div id="stat-pnl-usd" class="stat-val pos">+$0.00</div>
+          <small id="stat-pnl-r" class="mut" style="font-size:11px;">+0.00 R (0 closed)</small>
+        </div>
+        <div class="stat-box">
+          <small class="mut">Risk Per Trade</small>
+          <div id="stat-margin-lev" class="stat-val" style="font-size:18px;">$5.00 USDT</div>
+          <small id="stat-margin-sub" class="mut" style="font-size:11px;">Auto Margin · Max Lev</small>
+        </div>
+        <div class="stat-box">
+          <small class="mut">Win Rate</small>
+          <div id="stat-wr" class="stat-val pos">0%</div>
+          <small id="stat-record" class="mut" style="font-size:11px;">0 W / 0 L</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Tracked Trades Card -->
+    <div class="card" style="margin-bottom:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
+        <h2 style="margin:0;">
+          <span>Active Tracked Trades (TP1 $\rightarrow$ Break-Even $\rightarrow$ TP2)</span>
+          <small id="trades-count" class="mut" style="font-size:12px; margin-left:6px; font-weight:normal;"></small>
+        </h2>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button id="btn-clear-active-trades" onclick="openClearTradesModal()" style="display:none; padding:4px 10px; font-size:11px; background:#450a0a; border:1px solid #ef4444; color:#f87171; border-radius:4px; cursor:pointer; font-weight:600;" title="Clear or close all active tracked trades">🗑️ Clear Active Trades</button>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Strat</th>
+            <th>Dir</th>
+            <th>Entry</th>
+            <th>Price</th>
+            <th>Live P&amp;L</th>
+            <th>Live R</th>
+            <th>Auto Margin / Lev</th>
+            <th>SL (BE)</th>
+            <th>TP1 (1:3)</th>
+            <th>TP2 (1:5)</th>
+            <th>Status</th>
+            <th>Chart</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="trades-body"></tbody>
+      </table>
+      <small id="trades-empty" class="mut" style="display:block; padding:8px 0;">No active open trades currently tracked.</small>
+    </div>
+
+    <!-- Watchlist Card -->
+    <div class="card" style="margin-bottom:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
+        <h2 style="margin:0;">
+          <span>Watchlist &amp; Scanner Feed</span>
+          <small id="wl-count" class="mut"></small>
+        </h2>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <select id="wl-sector-filter" style="padding:4px 8px; font-size:11px; background:#161b22; color:#c9d1d9; border:1px solid #30363d; border-radius:4px;">
+            <option value="ALL">All Sectors &amp; Feeds</option>
+            <option value="1">VOL (Volume Leaders)</option>
+            <option value="2">MEME (Meme Coins)</option>
+            <option value="3">AI (AI Tokens)</option>
+            <option value="4">GAME (Gaming Tokens)</option>
+            <option value="5">GAIN (Top Gainers)</option>
+            <option value="6">DIP (Top Losers)</option>
+            <option value="7">500x (Ultra Leverage)</option>
+            <option value="0">PINNED (Manual Coins)</option>
+          </select>
+          <button id="btn-reset-scanner" style="padding:4px 10px; font-size:11px; background:#0c4a6e; border-color:#0284c7; color:#38bdf8; border-radius:4px; cursor:pointer;" title="Re-evaluate all coins with current strategy settings">🔄 Reset Scanner</button>
+          <button id="btn-clear-watchlist" style="padding:4px 10px; font-size:11px; background:#450a0a; border:1px solid #ef4444; color:#f87171; border-radius:4px; cursor:pointer;" title="Remove all coins from watchlist">🗑️ Clear Watchlist</button>
+        </div>
+      </div>
+      <div class="row" style="margin-bottom:12px;">
+        <div class="sugg"><input id="q" placeholder="Pin coin (e.g. BTC)" autocomplete="off"><div id="sugg" hidden></div></div>
+        <button id="add">Pin to Watchlist</button><span id="msg" class="mut"></span>
+      </div>
+      <table>
+        <thead><tr><th>Type</th><th>Symbol</th><th>Strategy</th><th>Stage</th><th>Dir</th><th>Price</th><th>Zone</th><th>Detail</th><th>Killzone</th><th></th></tr></thead>
+        <tbody id="wl"></tbody>
+      </table>
+      <small id="empty" hidden>No coins yet. Pin one above or enable Auto-Scanner.</small>
+    </div>
+
+    <!-- Recent Alerts Card -->
+    <div class="card">
+      <h2>Recent Alerts &amp; Trade Milestones</h2>
+      <table>
+        <thead><tr><th>Time</th><th>Symbol</th><th>Strat</th><th>Stage</th><th>Dir</th><th>Entry / SL / TP1 / TP2</th><th>Order / Note</th><th>Sent</th></tr></thead>
+        <tbody id="al"></tbody>
+      </table>
+    </div>
+  </div>
+
+
+  <!-- Modal: System Factory Reset -->
+  <div id="system-reset-modal" class="modal" style="display:none;" onclick="if(event.target===this)closeResetModal()">
+    <div class="card" style="max-width:480px; width:100%; border:1px solid #7f1d1d; background:#161b22; box-shadow:0 12px 36px rgba(0,0,0,0.85);" onclick="event.stopPropagation()">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid #30363d; padding-bottom:8px;">
+        <h3 style="margin:0; font-size:16px; color:#f87171; display:flex; align-items:center; gap:8px;">
+          <span>⚠️</span> Factory Reset All Data
+        </h3>
+        <button onclick="closeResetModal()" class="x" style="font-size:18px;">✕</button>
+      </div>
+
+      <p style="font-size:13px; color:#c9d1d9; line-height:1.5; margin-bottom:12px;">
+        This action will completely wipe all persistent data and return Mochbot to a pristine, clean state:
+      </p>
+
+      <ul style="font-size:12px; color:#8b949e; margin:0 0 16px 20px; line-height:1.7;">
+        <li><strong style="color:#f87171;">Active &amp; Historical Trades:</strong> All open and closed trades purged.</li>
+        <li><strong style="color:#f87171;">Watchlist:</strong> Completely cleared to blank (0 coins).</li>
+        <li><strong style="color:#f87171;">Recent Alerts:</strong> Alert history cleared.</li>
+        <li><strong style="color:#f87171;">Saved Charts:</strong> All generated chart snapshot files deleted from disk.</li>
+        <li><strong style="color:#f87171;">Settings:</strong> Capital ($1,000), Risk per Trade ($5.00), and auto-scanners reset to defaults.</li>
+      </ul>
+
+      <p style="font-size:12px; color:#fca5a5; background:#450a0a; border:1px solid #7f1d1d; padding:8px 12px; border-radius:4px; margin-bottom:16px;">
+        ⚠️ This action cannot be undone. Are you sure you want to proceed?
+      </p>
+
+      <div class="row" style="justify-content:flex-end; gap:8px;">
+        <button onclick="closeResetModal()" style="background:#21262d; border-color:#30363d; color:#c9d1d9; padding:6px 12px; font-size:12px;">Cancel</button>
+        <button id="btn-confirm-reset" onclick="confirmSystemReset()" style="background:#b91c1c; border-color:#dc2626; color:#ffffff; font-weight:bold; padding:6px 14px; font-size:12px;">⚠️ Yes, Reset Everything</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEW 2: COIN ANALYTICS HUB -->
+  <div id="view-analytics" class="view-pane" style="display:none;">
+    <div class="card">
+      <h2>
+        <span>Coin Analytics &amp; Win Rates Directory</span>
+        <div class="row">
+          <input id="filter-coin" placeholder="Filter by symbol..." style="padding:4px 8px; font-size:12px;">
+          <select id="filter-type" style="padding:4px 8px; font-size:12px;">
+            <option value="all">All Coins</option>
+            <option value="watching">Active Watchlist Only</option>
+            <option value="vol">Volume Leaders Only</option>
+            <option value="memes">Meme Coins Only</option>
+            <option value="ai">AI Tokens Only</option>
+            <option value="game">Gaming Tokens Only</option>
+            <option value="gainers">Top Gainers Only</option>
+            <option value="losers">Top Losers Only</option>
+            <option value="ultra">Ultra-Lev (200x+) Only</option>
+            <option value="pinned">Pinned Coins Only</option>
+            <option value="trades">Traded Only</option>
+          </select>
+          <select id="filter-strat" style="padding:4px 8px; font-size:12px;">
+            <option value="ALL">All Strategies</option>
+            <option value="MOD-01">MOD-01 Only</option>
+            <option value="MOD-01D">MOD-01D Only</option>
+            <option value="MOD-01E">MOD-01E Only</option>
+          </select>
+        </div>
+      </h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Status</th>
+            <th>Stage</th>
+            <th>Trades</th>
+            <th>Record (W/L)</th>
+            <th>Win Rate</th>
+            <th>Net P&amp;L ($)</th>
+            <th>Total R</th>
+            <th>Avg R</th>
+            <th>Setups</th>
+            <th>Last Active</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="analytics-tbody"></tbody>
+      </table>
+      <small id="analytics-empty" class="mut" style="display:block; padding:8px 0;" hidden>No coins match the current filter.</small>
+    </div>
+  </div>
+
+  <!-- VIEW 3: COIN JOURNAL & CHART GALLERY -->
+  <div id="view-journal" class="view-pane" style="display:none;">
+    <div class="card" style="margin-bottom:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+        <div>
+          <button id="journal-back" style="margin-bottom:8px; padding:3px 8px; font-size:11px;">← Back to Analytics</button>
+          <h2 style="font-size:22px; color:#f0f6fc; margin:0 0 4px; letter-spacing:0;" id="journal-symbol">BTC_USDT</h2>
+          <div id="journal-meta" class="mut" style="font-size:13px;"></div>
+        </div>
+        <div id="journal-stats" class="row"></div>
+      </div>
+    </div>
+
+    <!-- Visual Chart Snapshots Gallery -->
+    <div class="card" style="margin-bottom:20px;">
+      <h2>Visual Chart Snapshots (15m POI + 1m CHoCH Break)</h2>
+      <div id="gallery-grid" class="chart-grid"></div>
+      <small id="gallery-empty" class="mut" style="display:block; padding:8px 0;">No visual chart snapshots saved for this coin yet (generated on ENTRY READY).</small>
+    </div>
+
+    <!-- Coin Trade History Table -->
+    <div class="card" style="margin-bottom:20px;">
+      <h2>Trade Execution History</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Opened Time</th>
+            <th>Dir</th>
+            <th>Entry</th>
+            <th>Margin / Lev</th>
+            <th>SL</th>
+            <th>TP1 (1:3)</th>
+            <th>TP2 (1:5)</th>
+            <th>Outcome Status</th>
+            <th>PnL ($)</th>
+            <th>PnL (R)</th>
+            <th>Closed Time</th>
+          </tr>
+        </thead>
+        <tbody id="journal-trades-tbody"></tbody>
+      </table>
+      <small id="journal-trades-empty" class="mut" style="display:block; padding:8px 0;">No closed trades recorded for this coin yet.</small>
+    </div>
+
+    <!-- Coin Stage Audit Trail -->
+    <div class="card">
+      <h2>Stage Transitions &amp; Alerts Audit Trail</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Stage</th>
+            <th>Price</th>
+            <th>Details / Break Level</th>
+          </tr>
+        </thead>
+        <tbody id="journal-alerts-tbody"></tbody>
+      </table>
+      <small id="journal-alerts-empty" class="mut" style="display:block; padding:8px 0;">No alerts recorded for this coin.</small>
+    </div>
+  </div>
+</main>
+
+<!-- Lightbox Modal for Full Chart Images -->
+<div id="lightbox" class="modal" style="display:none;" onclick="this.style.display='none'">
+  <img id="lightbox-img" src="" alt="Full Chart">
+</div>
+
+
+<!-- Strategy Settings Modal -->
+<!-- Scanner Feeds & Discovery Settings Modal -->
+<div id="scanner-modal" class="modal" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+  <div class="card" style="max-width:580px; width:100%; border-color:#38bdf8; max-height:90vh; overflow-y:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h3 style="margin:0; font-size:16px;">📡 Auto-Scanner &amp; Discovery Settings</h3>
+      <button onclick="$('scanner-modal').style.display='none'" class="x" style="font-size:18px;">✕</button>
+    </div>
+    <p style="font-size:12px; color:#8b949e; margin-bottom:14px;">
+      Configure automated coin discovery feeds from MEXC. Matching coins are synchronized to your watchlist and monitored 24/7.
+    </p>
+
+    <h4 style="margin:8px 0 6px 0; font-size:13px; color:#58a6ff;">1. Sector &amp; Market Feeds</h4>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:16px;">
+      <label class="pill" style="justify-content:flex-start; padding:6px 10px;"><input type="checkbox" id="modal-feed-vol"> 📈 Top Volume (50)</label>
+      <label class="pill" style="justify-content:flex-start; padding:6px 10px;"><input type="checkbox" id="modal-feed-meme"> 🐶 Top Memes (50)</label>
+      <label class="pill" style="justify-content:flex-start; padding:6px 10px;"><input type="checkbox" id="modal-feed-ai"> 🤖 Top AI (35)</label>
+      <label class="pill" style="justify-content:flex-start; padding:6px 10px;"><input type="checkbox" id="modal-feed-game"> 🎮 Top Gaming (35)</label>
+      <label class="pill" style="justify-content:flex-start; padding:6px 10px;"><input type="checkbox" id="modal-feed-gain"> 🚀 Top Gainers (25)</label>
+      <label class="pill" style="justify-content:flex-start; padding:6px 10px;"><input type="checkbox" id="modal-feed-dip"> 🩸 Top Losers / Dips (25)</label>
+      <label class="pill" style="justify-content:flex-start; padding:6px 10px; grid-column:span 2;"><input type="checkbox" id="modal-feed-ultra"> ⚡ Ultra-High Leverage Only (200x–500x Max Lev)</label>
+    </div>
+
+    <h4 style="margin:8px 0 6px 0; font-size:13px; color:#58a6ff;">2. Thresholds &amp; Leverage Filters</h4>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
+      <div>
+        <label style="font-size:11px; color:#8b949e; display:block; margin-bottom:4px;">Minimum 24h Turnover (Gainers/Losers)</label>
+        <input id="input-min-gainer-vol" type="number" step="1000000" min="0" placeholder="5000000" style="width:100%; padding:6px 8px; font-size:12px;">
+        <small class="mut" style="font-size:10px;">Filters illiquid pump-and-dumps ($5M default)</small>
+      </div>
+      <div>
+        <label style="font-size:11px; color:#8b949e; display:block; margin-bottom:4px;">Minimum Max-Leverage Filter</label>
+        <select id="input-min-leverage" style="width:100%; padding:6px 8px; font-size:12px;">
+          <option value="1">All Leverages (1x – 500x)</option>
+          <option value="20">At least 20x</option>
+          <option value="50">At least 50x</option>
+          <option value="100">At least 100x</option>
+          <option value="200">At least 200x (Ultra)</option>
+          <option value="500">500x Only</option>
+        </select>
+        <small class="mut" style="font-size:10px;">Exclude coins below this leverage capability</small>
+      </div>
+    </div>
+
+    <div>
+      <label style="font-size:11px; color:#8b949e; display:block; margin-bottom:4px;">Maximum Active Watchlist Capacity</label>
+      <input id="input-max-active-coins" type="number" step="10" min="20" max="250" placeholder="150" style="width:100%; padding:6px 8px; font-size:12px;">
+      <small class="mut" style="font-size:10px;">Deduplicated active coin limit (150 default for smooth WebSocket performance)</small>
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px;">
+      <button onclick="$('scanner-modal').style.display='none'" style="background:#21262d; border-color:#30363d; font-size:12px;">Cancel</button>
+      <button id="save-scanner-btn" style="background:#0284c7; border-color:#0284c7; font-size:12px; font-weight:bold;">💾 Save Scanner Settings</button>
+    </div>
+  </div>
+</div>
+
+<div id="strategy-modal" class="modal" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+  <div class="card" style="max-width:540px; width:92%; padding:20px; background:#161b22; border:1px solid #30363d; border-radius:8px; max-height:90vh; overflow-y:auto;" onclick="event.stopPropagation()">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <h3 style="margin:0; font-size:17px;">⚙️ Multi-Strategy Settings</h3>
+      <button onclick="$('strategy-modal').style.display='none'" class="x" style="font-size:18px;">✕</button>
+    </div>
+
+    <!-- Strategy Tabs -->
+    <div style="display:flex; gap:6px; margin-bottom:16px; border-bottom:1px solid #30363d; padding-bottom:8px;">
+      <button id="tab-strat-global" class="nav-btn active" style="font-size:12px; padding:4px 10px;">Global Default</button>
+      <button id="tab-strat-mod01" class="nav-btn" style="font-size:12px; padding:4px 10px;">MOD-01 (15m/1m)</button>
+      <button id="tab-strat-mod01d" class="nav-btn" style="font-size:12px; padding:4px 10px;">MOD-01D (Top-Down)</button>
+      <button id="tab-strat-mod01e" class="nav-btn" style="font-size:12px; padding:4px 10px;">MOD-01E (Fib Limit)</button>
+    </div>
+
+    <!-- PANE 1: GLOBAL DEFAULT -->
+    <div id="pane-strat-global">
+      <div style="margin-bottom:14px;">
+        <label style="display:block; font-size:12px; margin-bottom:4px;" class="mut">Default Strategy for Auto-Scanned Volume Coins</label>
+        <select id="input-global-strategy" style="width:100%; padding:6px 8px;">
+          <option value="MOD-01E">MOD-01E: 1H–15m Alignment & 5m Fib Limit Retest (0.618 OTE)</option>
+        </select>
+        <small class="mut" style="display:block; margin-top:6px;">Auto-scanned volume leaders will automatically be assigned this strategy unless overridden in the watchlist.</small>
+      </div>
+    </div>
+
+    <!-- PANE 2: MOD-01 -->
+    <div id="pane-strat-mod01" style="display:none;">
+      <p style="font-size:12px; color:#8b949e; margin-top:0;">Single-timeframe POI with 1m lower-timeframe confirmation break and ATR safety buffers.</p>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">HTF Minutes</label>
+          <input id="input-mod01-htf" type="number" min="5" max="240" step="5" style="width:100%; padding:5px 7px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">LTF Execution Timeframe</label>
+          <select id="input-mod01-ltf" style="width:100%; padding:5px 7px;">
+            <option value="1">1m (Scalp Fast)</option>
+            <option value="3" selected>3m (Recommended Default)</option>
+            <option value="5">5m (Conservative)</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">POI Search Bars</label>
+          <input id="input-mod01-search" type="number" min="10" max="100" style="width:100%; padding:5px 7px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">Swing Lookback</label>
+          <input id="input-mod01-swing" type="number" min="2" max="20" style="width:100%; padding:5px 7px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">Max Age Bars</label>
+          <input id="input-mod01-maxage" type="number" min="5" max="50" style="width:100%; padding:5px 7px;">
+        </div>
+        <div style="grid-column:1 / -1;">
+          <label style="display:block; font-size:11px;" class="mut">Watch Distance (ATR multiples)</label>
+          <input id="input-mod01-watchdist" type="number" min="0.1" max="5" step="0.1" style="width:100%; padding:5px 7px;">
+        </div>
+      </div>
+    </div>
+
+    <!-- PANE 3: MOD-01D -->
+    <div id="pane-strat-mod01d" style="display:none;">
+      <p style="font-size:12px; color:#8b949e; margin-top:0;">Strict Top-Down Confirmation: 4H Structural Bias → 1H Sweep/Displacement POI → 15m Reaction CHoCH → 5m Entry CHoCH.</p>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">4H Swing Lookback</label>
+          <input id="input-mod01d-swing" type="number" min="2" max="20" style="width:100%; padding:5px 7px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">1H POI Lookback (Bars)</label>
+          <input id="input-mod01d-poibars" type="number" min="10" max="150" style="width:100%; padding:5px 7px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">1H Displacement Multiplier</label>
+          <input id="input-mod01d-dispmult" type="number" min="0.5" max="3" step="0.1" style="width:100%; padding:5px 7px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">15m Reaction Window (Bars)</label>
+          <input id="input-mod01d-reactionwindow" type="number" min="3" max="30" style="width:100%; padding:5px 7px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">5m Entry Break Window (Bars)</label>
+          <input id="input-mod01d-entrywindow" type="number" min="2" max="20" style="width:100%; padding:5px 7px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">SL ATR Buffer Multiplier</label>
+          <input id="input-mod01d-atrbuffer" type="number" min="0.0" max="1" step="0.05" style="width:100%; padding:5px 7px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">TP1 Multiple (R)</label>
+          <input id="input-mod01d-tp1rr" type="number" min="1" max="10" step="0.5" style="width:100%; padding:5px 7px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">TP2 Multiple (R)</label>
+          <input id="input-mod01d-tp2rr" type="number" min="2" max="20" step="0.5" style="width:100%; padding:5px 7px;">
+        </div>
+        <div style="grid-column:1 / -1;">
+          <label class="pill" style="margin-top:4px;"><input type="checkbox" id="input-mod01d-requirefvg"> Require 1H FVG or Structure BOS for POI</label>
+        </div>
+      </div>
+    </div>
+
+        <!-- PANE 4: MOD-01E -->
+    <div id="pane-strat-mod01e" style="display:none;">
+      <p style="font-size:12px; color:#8b949e; margin-top:0;">Phantom 01E Fib: 1H Structure Bias → 15m Alignment → 15m CHoCH Dealing Range → 5m Limit Retest at Fib (0.618 / 0.382 OTE).</p>
+      
+      <!-- 1. TIMEFRAME ALIGNMENT -->
+      <div style="font-size:11px; font-weight:bold; color:#58a6ff; text-transform:uppercase; margin-bottom:8px; border-bottom:1px solid #30363d; padding-bottom:4px;">1. Timeframe Alignment</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">Master Bias Timeframe</label>
+          <select id="input-mod01e-biastf" style="width:100%; padding:5px 7px;">
+            <option value="60" selected>1 hour (Default)</option>
+            <option value="240">4 hours</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">Alignment Timeframe</label>
+          <select id="input-mod01e-aligntf" style="width:100%; padding:5px 7px;">
+            <option value="15" selected>15 minutes (Default)</option>
+            <option value="30">30 minutes</option>
+            <option value="60">1 hour</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">Entry / Limit Timeframe</label>
+          <select id="input-mod01e-entrytf" style="width:100%; padding:5px 7px;">
+            <option value="5" selected>5 minutes (Default)</option>
+            <option value="15">15 minutes</option>
+            <option value="3">3 minutes</option>
+            <option value="1">1 minute</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">CHoCH Break Rule</label>
+          <select id="input-mod01e-breakrule" style="width:100%; padding:5px 7px;">
+            <option value="Body close" selected>Body close (Strict)</option>
+            <option value="Wick">Wick (Aggressive)</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">1H Swing Strength</label>
+          <input id="input-mod01e-biaslen" type="number" min="1" max="15" step="1" style="width:100%; padding:5px 7px;" value="5">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">15m Swing Strength</label>
+          <input id="input-mod01e-alignlen" type="number" min="1" max="15" step="1" style="width:100%; padding:5px 7px;" value="5">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">15m CHoCH Swing Strength</label>
+          <input id="input-mod01e-entrylen" type="number" min="1" max="10" step="1" style="width:100%; padding:5px 7px;" value="3">
+        </div>
+        <div style="display:flex; align-items:flex-end;">
+          <label class="pill" style="margin-top:4px;"><input type="checkbox" id="input-mod01e-requirealign" checked> Require 1H and 15m Alignment</label>
+        </div>
+      </div>
+
+      <!-- 2. CHOCH FIBONACCI ENTRY -->
+      <div style="font-size:11px; font-weight:bold; color:#58a6ff; text-transform:uppercase; margin-bottom:8px; border-bottom:1px solid #30363d; padding-bottom:4px;">2. CHoCH Fibonacci Entry</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">Limit Entry Fib Level</label>
+          <select id="input-mod01e-entryfib" style="width:100%; padding:5px 7px;">
+            <option value="0.382">0.382 (Shallow Retrace)</option>
+            <option value="0.5">0.500 (Equilibrium / Halfway)</option>
+            <option value="0.618" selected>0.618 (Golden Pocket OTE - Default)</option>
+            <option value="0.786">0.786 (Deep Discount/Premium)</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">Limit Expiry (Entry-Timeframe Bars)</label>
+          <input id="input-mod01e-expiry" type="number" min="1" max="120" step="1" style="width:100%; padding:5px 7px;" value="18">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">Fib Zone Near Edge</label>
+          <select id="input-mod01e-zonenear" style="width:100%; padding:5px 7px;">
+            <option value="0.382">0.382</option>
+            <option value="0.5" selected>0.500 (Default)</option>
+            <option value="0.618">0.618</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">Fib Zone Far Edge</label>
+          <select id="input-mod01e-zonefar" style="width:100%; padding:5px 7px;">
+            <option value="0.618">0.618</option>
+            <option value="0.786">0.786</option>
+            <option value="1.0" selected>1.000 (Full Origin - Default)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 3. RISK AND TARGETS -->
+      <div style="font-size:11px; font-weight:bold; color:#58a6ff; text-transform:uppercase; margin-bottom:8px; border-bottom:1px solid #30363d; padding-bottom:4px;">3. Risk and Targets</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">Stop Buffer ATR (15m ATR)</label>
+          <input id="input-mod01e-atrbuffer" type="number" min="0.0" max="2.0" step="0.05" style="width:100%; padding:5px 7px;" value="0.15">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">TP1 Reward (R)</label>
+          <input id="input-mod01e-tp1rr" type="number" min="0.5" max="10" step="0.5" style="width:100%; padding:5px 7px;" value="3.0">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">TP2 Reward (R)</label>
+          <input id="input-mod01e-tp2rr" type="number" min="1.0" max="20" step="0.5" style="width:100%; padding:5px 7px;" value="5.0">
+        </div>
+        <div style="display:flex; align-items:flex-end;">
+          <label class="pill" style="margin-top:4px;"><input type="checkbox" id="input-mod01e-usekillzone"> Use London & NY Killzones</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="row" style="justify-content:flex-end; margin-top:16px;">
+      <button onclick="$('strategy-modal').style.display='none'" style="background:#21262d; border-color:#30363d;">Cancel</button>
+      <button id="save-strategies-btn" style="background:#238636; border-color:#2ea043; color:white;">Save Strategy Settings</button>
+    </div>
+  </div>
+</div>
+
+<!-- Account & Sizing Settings Modal -->
+<div id="account-modal" class="modal" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+  <div class="card" style="max-width:400px; width:90%; padding:20px; background:#161b22; border:1px solid #30363d; border-radius:8px;" onclick="event.stopPropagation()">
+    <h3 style="margin-top:0; font-size:16px;">⚙️ Capital &amp; Risk Settings</h3>
+    <div style="margin-bottom:14px;">
+      <label style="display:block; font-size:12px; margin-bottom:4px;" class="mut">Account Starting Capital (USDT)</label>
+      <input id="input-capital" type="number" min="1" step="1" style="width:100%; padding:6px 8px;">
+    </div>
+    <div style="margin-bottom:16px;">
+      <label style="display:block; font-size:12px; margin-bottom:4px;" class="mut">Risk Per Trade (USDT)</label>
+      <input id="input-risk" type="number" min="0.1" step="0.5" style="width:100%; padding:6px 8px;">
+      <small class="mut" style="display:block; margin-top:4px; line-height:1.4;">Margin is automatically computed per coin so that reaching Stop Loss risks exactly this dollar amount at max leverage (-1.0R = -$5.00).</small>
+    </div>
+    <div class="row" style="justify-content:flex-end; gap:8px;">
+      <button onclick="$('account-modal').style.display='none'" style="background:#21262d; border-color:#30363d;">Cancel</button>
+      <button id="save-account-btn" style="background:#238636; border-color:#2ea043; color:white;">Save Settings</button>
+    </div>
+  </div>
+</div>
+
+<!-- MOCHEX Trade Sync Modal -->
+<div id="mochex-modal" class="modal" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+  <div class="card" style="max-width:460px; width:92%; padding:20px; background:#161b22; border:1px solid #7c3aed; border-radius:8px;" onclick="event.stopPropagation()">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h3 style="margin:0; font-size:16px; color:#c4b5fd; display:flex; align-items:center; gap:8px;">
+        <span>🔗</span> MOCHEX Trade Sync
+      </h3>
+      <span id="mochex-status-badge" style="font-size:11px; padding:2px 8px; border-radius:4px; background:#21262d; border:1px solid #30363d; color:#8b949e;">Not Tested</span>
+    </div>
+
+    <p style="font-size:12px; color:#8b949e; margin:0 0 16px 0; line-height:1.4;">
+      Automatically syncs opened positions, progressive targets (TP1 to Break-Even &amp; TP2 runner), and closed trades to your live MOCHEX / EXMOCHEX dashboard.
+    </p>
+
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; background:#0d1117; padding:10px 12px; border-radius:6px; border:1px solid #30363d;">
+      <div>
+        <label style="font-size:13px; font-weight:600; display:block; cursor:pointer; color:#e6edf3;" for="input-mochex-enabled">Enable MOCHEX Sync</label>
+        <small class="mut" style="font-size:11px;">Send live trade webhooks on open, update, and close</small>
+      </div>
+      <input id="input-mochex-enabled" type="checkbox" style="width:18px; height:18px; cursor:pointer;">
+    </div>
+
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; background:#0d1117; padding:10px 12px; border-radius:6px; border:1px solid #30363d;">
+      <div>
+        <label style="font-size:13px; font-weight:600; display:block; cursor:pointer; color:#e6edf3;" for="input-mochex-notify">Send MOCHEX Alerts</label>
+        <small class="mut" style="font-size:11px;">Trigger Telegram/Discord alerts configured inside MOCHEX</small>
+      </div>
+      <input id="input-mochex-notify" type="checkbox" style="width:18px; height:18px; cursor:pointer;">
+    </div>
+
+    <div style="margin-bottom:12px;">
+      <label style="display:block; font-size:12px; margin-bottom:4px;" class="mut">MOCHEX Webhook URL</label>
+      <input id="input-mochex-url" type="text" placeholder="https://staging.ymatt.online/api/trades/webhook" style="width:100%; padding:7px 9px; font-size:12px; font-family:monospace;">
+      <small class="mut" style="display:block; margin-top:4px; font-size:11px;">Base origin or full URL. E.g. https://staging.ymatt.online</small>
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <label style="display:block; font-size:12px; margin-bottom:4px;" class="mut">MOCHEX API Key (<span style="font-family:monospace;">X-API-Key</span>)</label>
+      <div style="display:flex; gap:6px;">
+        <input id="input-mochex-key" type="password" placeholder="tv_sec_..." style="flex:1; padding:7px 9px; font-size:12px; font-family:monospace;">
+        <button id="mochex-key-toggle" type="button" style="padding:4px 10px; font-size:12px; background:#21262d; border-color:#30363d;">👁️</button>
+      </div>
+      <small class="mut" style="display:block; margin-top:4px; font-size:11px;">Found under MOCHEX Dashboard &gt; Settings &gt; API Keys</small>
+    </div>
+
+    <div id="mochex-test-result" style="display:none; font-size:12px; padding:8px 10px; border-radius:6px; margin-bottom:14px;"></div>
+
+    <div class="row" style="justify-content:space-between; align-items:center;">
+      <button id="mochex-test-btn" type="button" style="background:#1f2937; border-color:#4b5563; color:#e5e7eb; font-size:12px; padding:6px 12px;">⚡ Test Connection</button>
+      <div class="row" style="gap:8px;">
+        <button onclick="$('mochex-modal').style.display='none'" style="background:#21262d; border-color:#30363d; font-size:12px;">Cancel</button>
+        <button id="save-mochex-btn" style="background:#7c3aed; border-color:#8b5cf6; color:white; font-size:12px; font-weight:600; padding:6px 14px;">Save Settings</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Clear Active Trades Modal -->
+<div id="clear-trades-modal" class="modal" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+  <div class="card" style="width:480px; max-width:92vw; background:#161b22; border:1px solid #30363d; padding:20px;" onclick="event.stopPropagation()">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <h3 style="margin:0; font-size:16px; color:#f87171;">🗑️ Clear Active Tracked Trades</h3>
+      <button onclick="$('clear-trades-modal').style.display='none'" class="x" style="font-size:18px;">✕</button>
+    </div>
+    <p style="font-size:13px; color:#c9d1d9; margin-bottom:16px; line-height:1.5;">
+      You currently have <b id="clear-modal-trades-count" style="color:#f87171;">0</b> active tracked trade(s). Choose how you want to clear them:
+    </p>
+
+    <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:16px;">
+      <div style="background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <strong style="color:#fbbf24; font-size:13px;">Option 1: Close All (Save to History)</strong>
+          <span class="badge CLOSED_MANUAL" style="font-size:10px;">Recommended</span>
+        </div>
+        <p style="font-size:11px; color:#8b949e; margin:0 0 10px 0; line-height:1.4;">
+          Marks active trades as <code>CLOSED_MANUAL</code> at latest market prices, calculates realized P&amp;L, syncs exit to MOCHEX / EXMOCHEX, and preserves complete history in your Trade Journal.
+        </p>
+        <button id="btn-confirm-close-all" onclick="submitClearTrades('close')" style="width:100%; padding:8px 12px; font-size:12px; font-weight:600; background:#d97706; border:1px solid #f59e0b; color:white; border-radius:4px; cursor:pointer;">
+          ✓ Close All &amp; Record in History
+        </button>
+      </div>
+
+      <div style="background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <strong style="color:#f87171; font-size:13px;">Option 2: Delete All (Purge Records)</strong>
+          <span class="badge CLOSED_SL" style="font-size:10px;">Destructive</span>
+        </div>
+        <p style="font-size:11px; color:#8b949e; margin:0 0 10px 0; line-height:1.4;">
+          Permanently deletes active trade rows from SQLite database. These trades will not appear in closed trade history or performance stats.
+        </p>
+        <button id="btn-confirm-purge-all" onclick="submitClearTrades('delete')" style="width:100%; padding:8px 12px; font-size:12px; font-weight:600; background:#991b1b; border:1px solid #ef4444; color:white; border-radius:4px; cursor:pointer;">
+          ⚠ Delete All Permanently
+        </button>
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:flex-end;">
+      <button onclick="$('clear-trades-modal').style.display='none'" style="background:#21262d; border-color:#30363d; font-size:12px; padding:6px 14px;">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = n => n == null ? '-' : (Math.abs(n) >= 100 ? n.toFixed(2) : Math.abs(n) >= 1 ? n.toFixed(4) : n.toPrecision(5));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let state = { watchlist: [], activeTrades: [], performance: {} };
+let analyticsData = [];
+let currentJournalSymbol = null;
+let currentTab = 'scanner';
+
+// Audio Synthesizer
+let audioCtx = null;
+let sirenOsc1 = null, sirenInterval = null;
+
+function getAudioCtx() {
+  if (!audioCtx) {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (AudioContext) audioCtx = new AudioContext();
+  }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function playChime() {
+  if (!$('sound').checked) return;
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const osc1 = ctx.createOscillator(), osc2 = ctx.createOscillator(), gain = ctx.createGain();
+  osc1.type = 'sine'; osc1.frequency.setValueAtTime(587.33, now);
+  osc2.type = 'sine'; osc2.frequency.setValueAtTime(880.00, now + 0.15);
+  gain.gain.setValueAtTime(0.2, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+  osc1.connect(gain); osc2.connect(gain); gain.connect(ctx.destination);
+  osc1.start(now); osc1.stop(now + 0.15);
+  osc2.start(now + 0.15); osc2.stop(now + 0.6);
+}
+
+function startSiren(title) {
+  if (title) {
+    $('alarm-text').textContent = title;
+    $('alarm-banner').hidden = false;
+  }
+  if (!$('sound').checked) return;
+  stopSiren(false);
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  sirenOsc1 = ctx.createOscillator();
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.25, now);
+  sirenOsc1.type = 'sawtooth';
+  sirenOsc1.frequency.setValueAtTime(700, now);
+  sirenOsc1.connect(gain); gain.connect(ctx.destination);
+  sirenOsc1.start(now);
+  let high = true;
+  sirenInterval = setInterval(() => {
+    if (!sirenOsc1) return;
+    sirenOsc1.frequency.setValueAtTime(high ? 950 : 700, ctx.currentTime);
+    high = !high;
+  }, 350);
+}
+
+function stopSiren(hideBanner = true) {
+  if (sirenInterval) { clearInterval(sirenInterval); sirenInterval = null; }
+  if (sirenOsc1) { try { sirenOsc1.stop(); sirenOsc1.disconnect(); } catch{} sirenOsc1 = null; }
+  if (hideBanner) $('alarm-banner').hidden = true;
+}
+
+$('silence-btn').onclick = () => stopSiren(true);
+$('test-audio').onclick = () => {
+  getAudioCtx();
+  playChime();
+  startSiren('TEST ALARM: Entry Ready Simulation');
+  setTimeout(() => stopSiren(true), 3500);
+};
+
+// Tab Navigation
+function switchTab(tabId) {
+  currentTab = tabId;
+  $('view-scanner').style.display = tabId === 'scanner' ? 'grid' : 'none';
+  $('view-analytics').style.display = tabId === 'analytics' ? 'block' : 'none';
+  $('view-journal').style.display = tabId === 'journal' ? 'block' : 'none';
+
+  $('nav-scanner').classList.toggle('active', tabId === 'scanner');
+  $('nav-analytics').classList.toggle('active', tabId === 'analytics');
+  $('nav-journal').classList.toggle('active', tabId === 'journal');
+}
+
+$('nav-scanner').onclick = () => { window.location.hash = '#scanner'; switchTab('scanner'); };
+$('nav-analytics').onclick = () => { window.location.hash = '#analytics'; switchTab('analytics'); loadAnalytics(); };
+$('nav-journal').onclick = () => { if (currentJournalSymbol) openJournal(currentJournalSymbol, true); };
+$('journal-back').onclick = () => { window.location.hash = '#analytics'; switchTab('analytics'); loadAnalytics(); };
+
+function handleRoute() {
+  const hash = window.location.hash || '#scanner';
+  if (hash.startsWith('#journal/')) {
+    const sym = hash.replace('#journal/', '').trim();
+    if (sym) openJournal(sym, true);
+  } else if (hash === '#journal') {
+    if (currentJournalSymbol) {
+      openJournal(currentJournalSymbol, true);
+    } else {
+      window.location.hash = '#scanner';
+      switchTab('scanner');
+    }
+  } else if (hash === '#analytics') {
+    switchTab('analytics');
+    loadAnalytics();
+  } else {
+    switchTab('scanner');
+  }
+}
+window.onhashchange = handleRoute;
+
+function showLightbox(url) {
+  $('lightbox-img').src = url;
+  $('lightbox').style.display = 'flex';
+}
+
+async function api(path, opts = {}) {
+  try {
+    const res = await fetch(path, { headers: { 'content-type': 'application/json' }, ...opts, body: opts.body ? JSON.stringify(opts.body) : undefined });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return await res.json();
+  } catch (err) {
+    if (err && err.name === 'TypeError' && String(err.message).includes('fetch')) {
+      throw new Error('Connection refused or lost. Server may be restarting or unreachable.');
+    }
+    throw err;
+  }
+}
+
+function detail(s) {
+  if (!s) return '<span class="mut">waiting for data</span>';
+  if (s.stage === 'WATCH') return `${s.distanceAtr ? s.distanceAtr.toFixed(2) : '-'} ATR(15m) from POI`;
+  if (s.stage === 'ARMED') {
+    const tfBreak = (s.strategyId === 'MOD-01D' || s.strategyId === 'MOD-01E') ? '5m' : (s.ltfMinutes || 1) + 'm';
+    return `need ${tfBreak} close ${s.direction === 'LONG' ? 'above' : 'below'} ${fmt(s.needBreak)}<br><small>${s.barsSinceTap ?? 0} bars since tap</small>`;
+  }
+  if (s.stage === 'ENTRY_READY') {
+    const sz = s.sizing ? `<br><small class="long">Lev ${s.sizing.leverage}x · Margin $${s.sizing.margin.toFixed(2)} ($${s.sizing.notional.toFixed(0)})</small>` : '';
+    return `entry ${fmt(s.entry)} · SL ${fmt(s.sl)}${sz}`;
+  }
+  return '<span class="mut">no setup nearby</span>';
+}
+
+function renderWl() {
+  const body = $('wl');
+  $('empty').hidden = state.watchlist.length > 0;
+  $('wl-count').textContent = `(${state.watchlist.length} symbols active)`;
+
+  const currentSymbols = new Set(state.watchlist.map(w => w.symbol));
+
+  // 1. Remove rows that are no longer in watchlist
+  for (const tr of Array.from(body.querySelectorAll('tr[data-sym]'))) {
+    if (!currentSymbols.has(tr.dataset.sym)) {
+      tr.remove();
+    }
+  }
+
+  // 2. Insert or update rows without blowing away active dropdowns
+  for (const w of state.watchlist) {
+    const s = w.state;
+    const stage = s ? s.stage : 'IDLE';
+    const curStrat = 'MOD-01E';
+    let tr = body.querySelector(`tr[data-sym="${esc(w.symbol)}"]`);
+
+    if (!tr) {
+      tr = document.createElement('tr');
+      tr.dataset.sym = w.symbol;
+
+      const secFilter = $('wl-sector-filter')?.value || 'ALL';
+      if (secFilter !== 'ALL' && String(w.is_auto ?? 0) !== secFilter) {
+        if (tr) tr.style.display = 'none';
+        continue;
+      }
+
+      const tag = (w.is_auto === 0)
+        ? '<span class="badge-tag tag-pinned" title="Manually pinned">PINNED</span>'
+        : (w.is_auto === 2
+           ? '<span class="badge-tag tag-meme" style="background:#4a154b; color:#f472b6; border:1px solid #db2777;" title="Auto-scanned meme coin">MEME</span>'
+           : (w.is_auto === 3
+              ? '<span class="badge-tag" style="background:#083344; color:#38bdf8; border:1px solid #0891b2;" title="Auto-scanned AI token">AI</span>'
+              : (w.is_auto === 4
+                 ? '<span class="badge-tag" style="background:#3b0764; color:#c084fc; border:1px solid #9333ea;" title="Auto-scanned Gaming token">GAME</span>'
+                 : (w.is_auto === 5
+                    ? '<span class="badge-tag" style="background:#064e3b; color:#34d399; border:1px solid #059669;" title="Top 24h Gainer">GAIN</span>'
+                    : (w.is_auto === 6
+                       ? '<span class="badge-tag" style="background:#4c0519; color:#fb7185; border:1px solid #e11d48;" title="Top 24h Loser / Dip">DIP</span>'
+                       : (w.is_auto === 7
+                          ? '<span class="badge-tag" style="background:#451a03; color:#fbbf24; border:1px solid #d97706;" title="Ultra-High Leverage (200x-500x)">500x</span>'
+                          : '<span class="badge-tag tag-auto" title="Auto-scanned volume leader">VOL</span>'))))));
+      const levBadge = w.maxLeverage
+        ? `<span class="badge-tag" style="background:#1c2128; color:#8b949e; border:1px solid #30363d; font-size:10px; margin-left:3px;" title="Max Leverage">${w.maxLeverage}x</span>`
+        : '';
+
+      tr.innerHTML = `
+        <td class="col-tag"><div style="display:inline-flex; align-items:center;">${tag}${levBadge}</div></td>
+        <td class="col-sym"><a class="coin-link" onclick="openJournal('${esc(w.symbol)}')">${esc(w.symbol)}</a></td>
+        <td class="col-strat">
+          <select data-strat="${esc(w.symbol)}" style="padding:2px 6px; font-size:11px;">
+            <option value="MOD-01E" ${curStrat === 'MOD-01E' ? 'selected' : ''}>MOD-01E</option>
+          </select>
+        </td>
+        <td class="col-stage"><span class="badge ${stage}">${stage.replace('_',' ')}</span></td>
+        <td class="col-dir ${s && s.direction === 'LONG' ? 'long' : 'short'}">${s && s.direction ? s.direction : ''}</td>
+        <td class="col-price">${s ? fmt(s.price) : '-'}</td>
+        <td class="col-zone">${s && s.zone ? fmt(s.zone.bottom) + ' – ' + fmt(s.zone.top) : '-'}</td>
+        <td class="col-detail">${detail(s)}</td>
+        <td class="col-kz">
+          <select data-kz="${esc(w.symbol)}">
+            <option value="">global</option>
+            <option value="1" ${w.killzone === 1 ? 'selected' : ''}>on</option>
+            <option value="0" ${w.killzone === 0 ? 'selected' : ''}>off</option>
+          </select>
+        </td>
+        <td class="col-rm">
+          <button class="x" data-rm="${esc(w.symbol)}" title="Remove">✕</button>
+        </td>
+      `;
+      body.appendChild(tr);
+    } else {
+      const secFilter = $('wl-sector-filter')?.value || 'ALL';
+      if (secFilter !== 'ALL' && String(w.is_auto ?? 0) !== secFilter) {
+        tr.style.display = 'none';
+        continue;
+      } else {
+        tr.style.display = '';
+      }
+      const tagEl = tr.querySelector('.col-tag');
+      if (tagEl) {
+        const tag = (w.is_auto === 0)
+          ? '<span class="badge-tag tag-pinned" title="Manually pinned">PINNED</span>'
+          : (w.is_auto === 2
+             ? '<span class="badge-tag tag-meme" style="background:#4a154b; color:#f472b6; border:1px solid #db2777;" title="Auto-scanned meme coin">MEME</span>'
+             : (w.is_auto === 3
+                ? '<span class="badge-tag" style="background:#083344; color:#38bdf8; border:1px solid #0891b2;" title="Auto-scanned AI token">AI</span>'
+                : (w.is_auto === 4
+                   ? '<span class="badge-tag" style="background:#3b0764; color:#c084fc; border:1px solid #9333ea;" title="Auto-scanned Gaming token">GAME</span>'
+                   : (w.is_auto === 5
+                      ? '<span class="badge-tag" style="background:#064e3b; color:#34d399; border:1px solid #059669;" title="Top 24h Gainer">GAIN</span>'
+                      : (w.is_auto === 6
+                         ? '<span class="badge-tag" style="background:#4c0519; color:#fb7185; border:1px solid #e11d48;" title="Top 24h Loser / Dip">DIP</span>'
+                         : (w.is_auto === 7
+                            ? '<span class="badge-tag" style="background:#451a03; color:#fbbf24; border:1px solid #d97706;" title="Ultra-High Leverage (200x-500x)">500x</span>'
+                            : '<span class="badge-tag tag-auto" title="Auto-scanned volume leader">VOL</span>'))))));
+        const levBadge = w.maxLeverage ? `<span class="badge-tag" style="background:#1c2128; color:#8b949e; border:1px solid #30363d; font-size:10px; margin-left:3px;" title="Max Leverage">${w.maxLeverage}x</span>` : '';
+        tagEl.innerHTML = `<div style="display:inline-flex; align-items:center;">${tag}${levBadge}</div>`;
+      }
+      const stageEl = tr.querySelector('.col-stage');
+      if (stageEl) stageEl.innerHTML = `<span class="badge ${stage}">${stage.replace('_',' ')}</span>`;
+
+      const dirEl = tr.querySelector('.col-dir');
+      if (dirEl) {
+        dirEl.className = `col-dir ${s && s.direction === 'LONG' ? 'long' : 'short'}`;
+        dirEl.textContent = s && s.direction ? s.direction : '';
+      }
+
+      const priceEl = tr.querySelector('.col-price');
+      if (priceEl) priceEl.textContent = s ? fmt(s.price) : '-';
+
+      const zoneEl = tr.querySelector('.col-zone');
+      if (zoneEl) zoneEl.textContent = s && s.zone ? fmt(s.zone.bottom) + ' – ' + fmt(s.zone.top) : '-';
+
+      const detailEl = tr.querySelector('.col-detail');
+      if (detailEl) detailEl.innerHTML = detail(s);
+
+      // Only sync dropdown value if not currently focused by user
+      const stratSel = tr.querySelector(`select[data-strat="${esc(w.symbol)}"]`);
+      if (stratSel && document.activeElement !== stratSel) {
+        stratSel.value = curStrat;
+      }
+
+      const kzSel = tr.querySelector(`select[data-kz="${esc(w.symbol)}"]`);
+      if (kzSel && document.activeElement !== kzSel) {
+        kzSel.value = w.killzone === 1 ? '1' : w.killzone === 0 ? '0' : '';
+      }
+    }
+  }
+}
+
+function renderTrades() {
+  const body = $('trades-body'); body.innerHTML = '';
+  const trades = state.activeTrades || [];
+  $('trades-empty').style.display = trades.length > 0 ? 'none' : 'block';
+  const clearBtn = $('btn-clear-active-trades');
+  const countSpan = $('trades-count');
+  if (clearBtn) clearBtn.style.display = trades.length > 0 ? 'inline-block' : 'none';
+  if (countSpan) countSpan.textContent = trades.length > 0 ? `(${trades.length} active)` : '';
+  for (const t of trades) {
+    const rClass = (t.currentR || 0) >= 0 ? 'long' : 'short';
+    const pnlUsd = t.currentPnlUsd || 0;
+    const pnlPct = t.currentPnlPct || 0;
+    const pnlClass = pnlUsd >= 0 ? 'long' : 'short';
+    const chartLink = t.chartUrl ? `<a href="${t.chartUrl}" target="_blank" class="coin-link">🖼️ Chart</a>` : '-';
+    const marginVal = (t.margin ?? 1).toFixed(2);
+    const levVal = t.leverage ?? 50;
+    const notionalVal = (t.notional ?? ((t.margin ?? 1) * (t.leverage ?? 50))).toFixed(0);
+    const tr = document.createElement('tr');
+    const stratBadge = `<span class="badge" style="background:#21262d; border:1px solid #30363d; font-size:10px;">${t.strategy_id || 'MOD-01'}</span>`;
+    const mexcUrl = `https://www.mexc.co/en-PH/futures/${encodeURIComponent(t.symbol)}?type=linear_swap`;
+    tr.innerHTML = `<td><div style="display:inline-flex; align-items:center; gap:6px;"><a class="coin-link" onclick="openJournal('${esc(t.symbol)}')"><b>${esc(t.symbol)}</b></a><a href="${mexcUrl}" target="_blank" class="coin-link" title="Open ${esc(t.symbol)} on MEXC" style="font-size:11px; opacity:0.85; text-decoration:none;">📈 MEXC ↗</a></div></td>
+      <td>${stratBadge}</td>
+      <td class="${t.direction === 'LONG' ? 'long' : 'short'}">${t.direction}</td>
+      <td>${fmt(t.entry_price)}</td>
+      <td>${fmt(t.currentPrice)}</td>
+      <td class="${pnlClass}">
+        <b>${pnlUsd > 0 ? '+' : ''}$${pnlUsd.toFixed(2)}</b>
+        <span style="font-size:11px; margin-left:4px; font-weight:600;">(${pnlPct > 0 ? '+' : ''}${pnlPct.toFixed(2)}%)</span>
+      </td>
+      <td class="${rClass}">${t.currentR > 0 ? '+' : ''}${t.currentR} R</td>
+      <td>$${marginVal} · ${levVal}x <small class="mut">($${notionalVal})</small></td>
+      <td>${fmt(t.sl_price)}</td>
+      <td>${fmt(t.tp1_price)}</td>
+      <td>${fmt(t.tp2_price)}</td>
+      <td><span class="badge ${t.status}">${t.status.replace('_',' ')}</span></td>
+      <td>${chartLink}</td>
+      <td><button onclick="closeTradeRow(${t.id}, '${esc(t.symbol)}')" class="btn-del" title="Close ${esc(t.symbol)} trade manually" style="padding:2px 8px; font-size:11px; background:#21262d; color:#f87171; border:1px solid #484f58; border-radius:3px; cursor:pointer;">✕ Close</button></td>`;
+    body.appendChild(tr);
+  }
+}
+
+function openClearTradesModal() {
+  const trades = state.activeTrades || [];
+  if (!trades.length) return;
+  const countEl = $('clear-modal-trades-count');
+  if (countEl) countEl.textContent = trades.length;
+  $('clear-trades-modal').style.display = 'flex';
+}
+
+async function submitClearTrades(mode) {
+  const btnClose = $('btn-confirm-close-all');
+  const btnPurge = $('btn-confirm-purge-all');
+  if (btnClose) btnClose.disabled = true;
+  if (btnPurge) btnPurge.disabled = true;
+  try {
+    const res = await fetch('/api/trades/clear', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode }),
+    });
+    const data = await res.json();
+    if (!res.ok) alert(data.error || 'Failed to clear trades');
+    $('clear-trades-modal').style.display = 'none';
+  } catch (e) {
+    alert('Error clearing trades: ' + e.message);
+  } finally {
+    if (btnClose) btnClose.disabled = false;
+    if (btnPurge) btnPurge.disabled = false;
+  }
+}
+
+async function closeTradeRow(id, symbol) {
+  if (!confirm(`Manually close active trade for ${symbol} at current market price?`)) return;
+  try {
+    const res = await fetch(`/api/trades/${id}/close`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) alert(data.error || 'Failed to close trade');
+  } catch (e) {
+    alert('Error closing trade: ' + e.message);
+  }
+}
+
+function renderPerformance() {
+  const p = state.performance || {};
+  const capital = p.accountCapital ?? 1000;
+  const equity = p.currentEquity ?? capital;
+  const pnlUsd = p.totalPnlUsd ?? 0;
+  const retPct = p.returnPct ?? 0;
+  const margin = p.defaultMargin ?? 1;
+
+  $('stat-equity').textContent = `$${equity.toFixed(2)}`;
+  $('stat-equity-sub').textContent = `Capital: $${capital.toFixed(0)} | ${retPct >= 0 ? '+' : ''}${retPct.toFixed(2)}%`;
+  $('stat-equity').className = 'stat-val ' + (equity >= capital ? 'pos' : 'neg');
+
+  $('stat-pnl-usd').textContent = `${pnlUsd >= 0 ? '+' : ''}$${pnlUsd.toFixed(2)}`;
+  $('stat-pnl-usd').className = 'stat-val ' + (pnlUsd >= 0 ? 'pos' : 'neg');
+  $('stat-pnl-r').textContent = `${(p.totalR || 0) > 0 ? '+' : ''}${(p.totalR || 0).toFixed(2)} R (${(p.wins ?? 0) + (p.losses ?? 0)} closed)`;
+
+  const risk = p.riskPerTrade ?? 5;
+  $('stat-margin-lev').textContent = `$${risk.toFixed(2)} USDT`;
+  $('stat-wr').textContent = `${p.winRate ?? 0}%`;
+  $('stat-record').textContent = `${p.wins ?? 0} W / ${p.losses ?? 0} L`;
+}
+
+function renderMeta() {
+  const m = $('mode'); m.textContent = state.mode === 'paper' ? 'PAPER: alerts logged, not sent' : 'LIVE'; m.className = 'pill ' + state.mode;
+  $('chan').textContent = `Telegram ${state.channels.telegram ? 'on' : 'off'} · Discord ${state.channels.discord ? 'on' : 'off'}`;
+  $('kz').checked = state.killzone;
+  $('scanner').checked = state.autoScanner;
+  if ($('meme-scanner')) $('meme-scanner').checked = state.memeScanner;
+  if ($('ai-scanner')) $('ai-scanner').checked = state.aiScanner;
+  if ($('game-scanner')) $('game-scanner').checked = state.gameScanner;
+  if ($('gainers-scanner')) $('gainers-scanner').checked = state.gainersScanner;
+  if ($('losers-scanner')) $('losers-scanner').checked = state.losersScanner;
+  if ($('ultra-lev-scanner')) $('ultra-lev-scanner').checked = state.ultraLevScanner;
+  $('mute').checked = state.muted;
+}
+
+async function loadAlerts() {
+  const rows = await api('/api/alerts');
+  $('al').innerHTML = rows.map(a => {
+    const p = a.payload, e = p.stage === 'ENTRY_READY';
+    const stratBadge = `<span class="badge" style="background:#21262d; border:1px solid #30363d; font-size:10px;">${p.strategyId || a.strategy_id || 'MOD-01'}</span>`;
+    return `<tr><td>${new Date(a.ts * 1000).toLocaleTimeString()}</td><td><a class="coin-link" onclick="openJournal('${esc(a.symbol)}')">${esc(a.symbol)}</a></td>
+      <td>${stratBadge}</td>
+      <td><span class="badge ${a.stage}">${a.stage.replace('_',' ')}</span></td>
+      <td class="${a.direction === 'LONG' ? 'long' : 'short'}">${a.direction || ''}</td>
+      <td>${e ? [p.entry, p.sl, p.tp1, p.tp2].map(fmt).join(' / ') : '-'}</td>
+      <td>${e ? esc(p.orderType || '') : (p.orderNote ? esc(p.orderNote) : '')}</td><td>${a.delivered ? '✓' : '–'}</td></tr>`;
+  }).join('');
+}
+
+async function load() {
+  state = await api('/api/state');
+  renderMeta();
+  renderWl();
+  renderTrades();
+  renderPerformance();
+}
+
+// ---------- VIEW 2: COIN ANALYTICS HUB ----------
+async function loadAnalytics() {
+  const strat = $('filter-strat') ? $('filter-strat').value : 'ALL';
+  analyticsData = await api('/api/analytics/coins?strategy=' + encodeURIComponent(strat));
+  renderAnalytics();
+}
+
+function renderAnalytics() {
+  const q = ($('filter-coin').value || '').trim().toUpperCase();
+  const typeFilter = $('filter-type').value;
+  const tbody = $('analytics-tbody');
+  tbody.innerHTML = '';
+
+  const filtered = analyticsData.filter(c => {
+    if (q && !c.symbol.includes(q)) return false;
+    if (typeFilter === 'watching' && !c.isWatching) return false;
+    if (typeFilter === 'memes' && c.autoType !== 2) return false;
+    if (typeFilter === 'trades' && c.totalTrades === 0) return false;
+    return true;
+  });
+
+  $('analytics-empty').hidden = filtered.length > 0;
+
+  for (const c of filtered) {
+    const tag = !c.isWatching
+      ? '<span class="badge-tag tag-inactive">INACTIVE</span>'
+      : (c.autoType === 2
+         ? '<span class="badge-tag tag-meme" style="background:#4a154b; color:#f472b6; border:1px solid #db2777;">MEME</span>'
+         : (c.isAuto
+            ? '<span class="badge-tag tag-auto">AUTO</span>'
+            : '<span class="badge-tag tag-pinned">PINNED</span>'));
+    const wrBadge = c.winRate >= 50 ? 'long' : c.winRate > 0 ? 'mut' : 'short';
+    const rClass = (c.totalR || 0) >= 0 ? 'long' : 'short';
+    const pnlClass = (c.totalPnlUsd || 0) >= 0 ? 'long' : 'short';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><a class="coin-link" onclick="openJournal('${esc(c.symbol)}')"><b>${esc(c.symbol)}</b></a></td>
+      <td>${tag}</td>
+      <td><span class="badge ${c.currentStage}">${c.currentStage}</span></td>
+      <td>${c.totalTrades}</td>
+      <td>${c.wins}W / ${c.losses}L</td>
+      <td class="${wrBadge}">${c.closedTrades > 0 ? c.winRate + '%' : '-'}</td>
+      <td class="${pnlClass}"><b>${(c.totalPnlUsd || 0) > 0 ? '+' : ''}$${(c.totalPnlUsd || 0).toFixed(2)}</b></td>
+      <td class="${rClass}">${c.totalR > 0 ? '+' : ''}${c.totalR.toFixed(2)} R</td>
+      <td>${c.closedTrades > 0 ? c.avgR.toFixed(2) + ' R' : '-'}</td>
+      <td>${c.totalAlerts}</td>
+      <td>${c.lastActive ? new Date(c.lastActive * 1000).toLocaleDateString() : '-'}</td>
+      <td><button onclick="openJournal('${esc(c.symbol)}')">📔 Journal</button></td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+$('filter-coin').oninput = renderAnalytics;
+$('filter-type').onchange = renderAnalytics;
+
+// ---------- VIEW 3: COIN TRADE JOURNAL ----------
+async function openJournal(symbol, navigate = true) {
+  currentJournalSymbol = symbol;
+  $('nav-journal').style.display = 'inline-flex';
+  $('nav-journal').textContent = `📔 Journal: ${symbol}`;
+
+  if (navigate) {
+    const targetHash = `#journal/${symbol}`;
+    if (window.location.hash !== targetHash) {
+      window.location.hash = targetHash;
+    }
+    switchTab('journal');
+  } else if (currentTab !== 'journal') {
+    return;
+  }
+
+  $('journal-symbol').textContent = symbol;
+  $('journal-meta').textContent = 'Loading journal details...';
+  $('gallery-grid').innerHTML = '';
+  $('journal-trades-tbody').innerHTML = '';
+  $('journal-alerts-tbody').innerHTML = '';
+
+  const data = await api(`/api/journal/${symbol}`);
+  const s = data.stats;
+  $('journal-meta').innerHTML = `
+    Stage: <span class="badge ${s?.currentStage ?? 'IDLE'}">${s?.currentStage ?? 'IDLE'}</span> ·
+    Price: <b>${fmt(s?.currentPrice)}</b> ·
+    <a href="https://www.mexc.co/en-PH/futures/${symbol}?type=linear_swap" target="_blank" class="coin-link" style="margin-left:6px;">📈 MEXC Chart ↗</a>
+  `;
+
+  $('journal-stats').innerHTML = `
+    <div class="stat-box" style="padding:6px 12px;"><small class="mut">Total Realized P&amp;L</small><div class="stat-val ${s && (s.totalPnlUsd || 0) >= 0 ? 'pos' : 'neg'}" style="font-size:16px;">${s && s.totalPnlUsd > 0 ? '+' : ''}$${s ? (s.totalPnlUsd || 0).toFixed(2) : '0.00'}</div></div>
+    <div class="stat-box" style="padding:6px 12px;"><small class="mut">Win Rate</small><div class="stat-val ${s && s.winRate >= 50 ? 'pos' : 'neg'}" style="font-size:16px;">${s ? s.winRate : 0}% (${s ? s.wins : 0}W/${s ? s.losses : 0}L)</div></div>
+    <div class="stat-box" style="padding:6px 12px;"><small class="mut">Total Realized R</small><div class="stat-val ${s && (s.totalR || 0) >= 0 ? 'pos' : 'neg'}" style="font-size:16px;">${s && s.totalR > 0 ? '+' : ''}${s ? s.totalR : 0} R</div></div>
+    <div class="stat-box" style="padding:6px 12px;"><small class="mut">Lifetime Trades</small><div class="stat-val" style="font-size:16px;">${data.trades.length}</div></div>
+  `;
+
+  // 1. Chart Gallery
+  const tradesWithCharts = data.trades.filter(t => t.chartUrl);
+  $('gallery-empty').style.display = tradesWithCharts.length > 0 ? 'none' : 'block';
+  for (const t of tradesWithCharts) {
+    const card = document.createElement('div');
+    card.className = 'chart-card';
+    card.innerHTML = `
+      <div class="chart-card-header">
+        <div><b>${new Date(t.opened_at * 1000).toLocaleString()}</b> <span class="badge ${t.status}">${t.status}</span></div>
+        <div class="${t.direction === 'LONG' ? 'long' : 'short'}">${t.direction}</div>
+      </div>
+      <img src="${t.chartUrl}" class="chart-img" alt="Chart" onclick="showLightbox('${t.chartUrl}')">
+      <div style="padding:8px 12px; font-size:12px;" class="row">
+        <span>Entry: <b>${fmt(t.entry_price)}</b></span>
+        <span>SL: <b class="short">${fmt(t.sl_price)}</b></span>
+        <span>TP1: <b class="long">${fmt(t.tp1_price)}</b></span>
+        <span>TP2: <b class="long">${fmt(t.tp2_price)}</b></span>
+        ${t.pnl_usd != null ? `<span style="margin-left:auto;" class="${t.pnl_usd >= 0 ? 'long' : 'short'}"><b>${t.pnl_usd > 0 ? '+' : ''}$${t.pnl_usd.toFixed(2)} (${t.pnl_r > 0 ? '+' : ''}${t.pnl_r}R)</b></span>` : ''}
+      </div>
+    `;
+    $('gallery-grid').appendChild(card);
+  }
+
+  // 2. Trade Execution History Table
+  $('journal-trades-empty').style.display = data.trades.length > 0 ? 'none' : 'block';
+  $('journal-trades-tbody').innerHTML = data.trades.map(t => {
+    const margin = t.margin || 1;
+    const pnlPct = t.pnl_usd != null ? ((t.pnl_usd / margin) * 100).toFixed(1) : null;
+    const pnlUsd = t.pnl_usd != null ? `<b class="${t.pnl_usd >= 0 ? 'long' : 'short'}">${t.pnl_usd > 0 ? '+' : ''}$${t.pnl_usd.toFixed(2)} <small style="font-weight:normal;">(${t.pnl_usd > 0 ? '+' : ''}${pnlPct}%)</small></b>` : '-';
+    const pnlR = t.pnl_r != null ? `<b class="${t.pnl_r >= 0 ? 'long' : 'short'}">${t.pnl_r > 0 ? '+' : ''}${t.pnl_r} R</b>` : '-';
+    const marginVal = (t.margin ?? 1).toFixed(2);
+    const levVal = t.leverage ?? 50;
+    return `<tr>
+      <td>${new Date(t.opened_at * 1000).toLocaleString()}</td>
+      <td class="${t.direction === 'LONG' ? 'long' : 'short'}">${t.direction}</td>
+      <td>${fmt(t.entry_price)}</td>
+      <td>$${marginVal} · ${levVal}x</td>
+      <td>${fmt(t.sl_price)}</td>
+      <td>${fmt(t.tp1_price)}</td>
+      <td>${fmt(t.tp2_price)}</td>
+      <td><span class="badge ${t.status}">${t.status}</span></td>
+      <td>${pnlUsd}</td>
+      <td>${pnlR}</td>
+      <td>${t.closed_at ? new Date(t.closed_at * 1000).toLocaleTimeString() : '-'}</td>
+    </tr>`;
+  }).join('');
+
+  // 3. Stage Transitions / Alerts Trail
+  $('journal-alerts-empty').style.display = data.alerts.length > 0 ? 'none' : 'block';
+  $('journal-alerts-tbody').innerHTML = data.alerts.map(a => {
+    const p = a.payload, isEntry = p.stage === 'ENTRY_READY';
+    const detail = isEntry
+      ? `Entry: ${fmt(p.entry)} | SL: ${fmt(p.sl)} | TP1: ${fmt(p.tp1)} | TP2: ${fmt(p.tp2)}`
+      : p.stage === 'ARMED'
+      ? `Need break ${p.direction === 'LONG' ? 'above' : 'below'} ${fmt(p.needBreak)}`
+      : p.stage === 'WATCH' && p.distanceAtr != null
+      ? `Distance: ${p.distanceAtr.toFixed(2)} ATR`
+      : '-';
+    return `<tr>
+      <td>${new Date(a.ts * 1000).toLocaleString()}</td>
+      <td><span class="badge ${a.stage}">${a.stage}</span></td>
+      <td>${fmt(p.price)}</td>
+      <td>${detail}</td>
+    </tr>`;
+  }).join('');
+}
+
+
+// Strategy Settings Modal Logic
+let strategyConfigs = {};
+
+function switchStratTab(paneId) {
+  $('pane-strat-global').style.display = paneId === 'global' ? 'block' : 'none';
+  $('pane-strat-mod01').style.display = paneId === 'mod01' ? 'block' : 'none';
+  $('pane-strat-mod01d').style.display = paneId === 'mod01d' ? 'block' : 'none';
+  $('pane-strat-mod01e').style.display = paneId === 'mod01e' ? 'block' : 'none';
+
+  $('tab-strat-global').classList.toggle('active', paneId === 'global');
+  $('tab-strat-mod01').classList.toggle('active', paneId === 'mod01');
+  $('tab-strat-mod01d').classList.toggle('active', paneId === 'mod01d');
+  $('tab-strat-mod01e').classList.toggle('active', paneId === 'mod01e');
+}
+
+$('tab-strat-global').onclick = () => switchStratTab('global');
+$('tab-strat-mod01').onclick = () => switchStratTab('mod01');
+$('tab-strat-mod01d').onclick = () => switchStratTab('mod01d');
+$('tab-strat-mod01e').onclick = () => switchStratTab('mod01e');
+
+$('strategy-settings-btn').onclick = async () => {
+  try {
+    const data = await api('/api/strategies');
+    strategyConfigs = data;
+    $('input-global-strategy').value = data.globalStrategy || 'MOD-01';
+
+    const mod01 = data.strategies.find(s => s.id === 'MOD-01')?.config || {};
+    $('input-mod01-htf').value = mod01.htfMinutes ?? 15;
+    $('input-mod01-ltf').value = mod01.ltfMinutes ?? 3;
+    $('input-mod01-search').value = mod01.poiSearchBars ?? 40;
+    $('input-mod01-swing').value = mod01.swingLookback ?? 5;
+    $('input-mod01-maxage').value = mod01.maxAgeBars ?? 20;
+    $('input-mod01-watchdist').value = mod01.watchDistanceAtr ?? 1.0;
+
+    const mod01d = data.strategies.find(s => s.id === 'MOD-01D')?.config || {};
+    $('input-mod01d-swing').value = mod01d.swingLookback ?? 5;
+    $('input-mod01d-poibars').value = mod01d.poiLookback ?? 50;
+    $('input-mod01d-dispmult').value = mod01d.displacementMult ?? 1.2;
+    $('input-mod01d-reactionwindow').value = mod01d.reactionWindowBars ?? 12;
+    $('input-mod01d-entrywindow').value = mod01d.entryBreakBars ?? 6;
+    $('input-mod01d-atrbuffer').value = mod01d.atrBufferMult ?? 0.1;
+    $('input-mod01d-tp1rr').value = mod01d.tp1Rr ?? 3.0;
+    $('input-mod01d-tp2rr').value = mod01d.tp2Rr ?? 5.0;
+    $('input-mod01d-requirefvg').checked = mod01d.requireFvgOrBos !== false;
+
+        const mod01e = data.strategies.find(s => s.id === 'MOD-01E')?.config || {};
+    $('input-mod01e-biastf').value = String(mod01e.biasTfMinutes ?? 60);
+    $('input-mod01e-aligntf').value = String(mod01e.alignTfMinutes ?? 15);
+    $('input-mod01e-entrytf').value = String(mod01e.entryTfMinutes ?? 5);
+    $('input-mod01e-biaslen').value = mod01e.biasPivotLen ?? 5;
+    $('input-mod01e-alignlen').value = mod01e.alignPivotLen ?? 5;
+    $('input-mod01e-entrylen').value = mod01e.entryPivotLen ?? 3;
+    $('input-mod01e-requirealign').checked = mod01e.requireAlignment !== false;
+    $('input-mod01e-breakrule').value = mod01e.breakRule ?? 'Body close';
+    $('input-mod01e-entryfib').value = String(mod01e.entryFib ?? 0.618);
+    $('input-mod01e-expiry').value = mod01e.orderExpiry ?? 18;
+    $('input-mod01e-zonenear').value = String(mod01e.zoneNear ?? 0.5);
+    $('input-mod01e-zonefar').value = String(mod01e.zoneFar ?? 1.0);
+    $('input-mod01e-atrbuffer').value = mod01e.stopBufferAtr ?? 0.15;
+    $('input-mod01e-tp1rr').value = mod01e.rrTP1 ?? 3.0;
+    $('input-mod01e-tp2rr').value = mod01e.rrTP2 ?? 5.0;
+    $('input-mod01e-usekillzone').checked = Boolean(mod01e.useKillzone);
+
+    switchStratTab('mod01e');
+    $('strategy-modal').style.display = 'flex';
+  } catch (e) {
+    alert('Failed to load strategy settings: ' + e.message);
+  }
+};
+
+$('btn-clear-watchlist').onclick = async () => {
+    if (!confirm('Are you sure you want to clear all tokens from the watchlist? This will make the watchlist completely blank.')) return;
+    const btn = $('btn-clear-watchlist');
+    try {
+      btn.disabled = true;
+      btn.textContent = 'Clearing…';
+      await api('/api/watchlist/clear', { method: 'POST' });
+      state = await api('/api/state');
+      renderMeta();
+      renderWl();
+      btn.textContent = '✓ Cleared';
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = '🗑️ Clear Watchlist';
+      }, 1500);
+    } catch (err) {
+      alert('Failed to clear watchlist: ' + err.message);
+      btn.disabled = false;
+      btn.textContent = '🗑️ Clear Watchlist';
+    }
+  };
+
+  $('btn-reset-scanner').onclick = async () => {
+  const btn = $('btn-reset-scanner');
+  const orig = btn.innerHTML;
+  btn.innerHTML = '⏳ Scanning MEXC...';
+  btn.disabled = true;
+  try {
+    const res = await api('/api/scanner/reset', { method: 'POST' });
+    state = await api('/api/state');
+    renderMeta();
+    renderWl();
+    renderTrades();
+    btn.innerHTML = '✓ Synced (' + (res.scannedCount || 0) + ' scanned)';
+    setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 2500);
+  } catch (err) {
+    btn.innerHTML = '❌ Failed';
+    setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 2000);
+  }
+};
+
+$('save-strategies-btn').onclick = async () => {
+  try {
+    const globalStrat = $('input-global-strategy').value;
+    const mod01Cfg = {
+      htfMinutes: parseInt($('input-mod01-htf').value) || 15,
+      ltfMinutes: parseInt($('input-mod01-ltf').value) || 3,
+      poiSearchBars: parseInt($('input-mod01-search').value) || 40,
+      swingLookback: parseInt($('input-mod01-swing').value) || 5,
+      maxAgeBars: parseInt($('input-mod01-maxage').value) || 20,
+      watchDistanceAtr: parseFloat($('input-mod01-watchdist').value) || 1.0,
+    };
+    const mod01dCfg = {
+      swingLookback: parseInt($('input-mod01d-swing').value) || 5,
+      poiLookback: parseInt($('input-mod01d-poibars').value) || 50,
+      displacementMult: parseFloat($('input-mod01d-dispmult').value) || 1.2,
+      reactionWindowBars: parseInt($('input-mod01d-reactionwindow').value) || 12,
+      entryBreakBars: parseInt($('input-mod01d-entrywindow').value) || 6,
+      atrBufferMult: parseFloat($('input-mod01d-atrbuffer').value) || 0.1,
+      tp1Rr: parseFloat($('input-mod01d-tp1rr').value) || 3.0,
+      tp2Rr: parseFloat($('input-mod01d-tp2rr').value) || 5.0,
+      requireFvgOrBos: $('input-mod01d-requirefvg').checked,
+    };
+
+        const mod01eCfg = {
+      biasTfMinutes: parseInt($('input-mod01e-biastf').value) || 60,
+      alignTfMinutes: parseInt($('input-mod01e-aligntf').value) || 15,
+      entryTfMinutes: parseInt($('input-mod01e-entrytf').value) || 5,
+      biasPivotLen: parseInt($('input-mod01e-biaslen').value) || 5,
+      alignPivotLen: parseInt($('input-mod01e-alignlen').value) || 5,
+      entryPivotLen: parseInt($('input-mod01e-entrylen').value) || 3,
+      requireAlignment: $('input-mod01e-requirealign').checked,
+      breakRule: $('input-mod01e-breakrule').value || 'Body close',
+      entryFib: parseFloat($('input-mod01e-entryfib').value) || 0.618,
+      orderExpiry: parseInt($('input-mod01e-expiry').value) || 18,
+      zoneNear: parseFloat($('input-mod01e-zonenear').value) || 0.5,
+      zoneFar: parseFloat($('input-mod01e-zonefar').value) || 1.0,
+      stopBufferAtr: parseFloat($('input-mod01e-atrbuffer').value) || 0.15,
+      rrTP1: parseFloat($('input-mod01e-tp1rr').value) || 3.0,
+      rrTP2: parseFloat($('input-mod01e-tp2rr').value) || 5.0,
+      useKillzone: $('input-mod01e-usekillzone').checked,
+    };
+
+    await api('/api/strategies/settings', {
+      method: 'POST',
+      body: {
+        globalStrategy: globalStrat,
+        mod01: mod01Cfg,
+        mod01d: mod01dCfg,
+        mod01e: mod01eCfg,
+      },
+    });
+
+    $('strategy-modal').style.display = 'none';
+    load();
+  } catch (e) {
+    alert('Failed to save strategy settings: ' + e.message);
+  }
+};
+
+if ($('filter-strat')) $('filter-strat').onchange = loadAnalytics;
+
+// Settings modal
+$('account-settings-btn').onclick = () => {
+  const p = state.performance || {};
+  $('input-capital').value = p.accountCapital ?? 1000;
+  $('input-risk').value = p.riskPerTrade ?? 5;
+  $('account-modal').style.display = 'flex';
+};
+
+$('save-account-btn').onclick = async () => {
+  const capital = parseFloat($('input-capital').value);
+  const risk = parseFloat($('input-risk').value);
+  if (isNaN(capital) || capital <= 0 || isNaN(risk) || risk <= 0) {
+    alert('Please enter valid positive values.');
+    return;
+  }
+  state = await api('/api/settings', { method: 'POST', body: { account_capital: capital, risk_per_trade: risk } });
+  renderPerformance();
+  renderTrades();
+  $('account-modal').style.display = 'none';
+};
+
+// MOCHEX Sync modal wiring
+$('mochex-sync-btn').onclick = async () => {
+  try {
+    const c = await api('/api/mochex/config');
+    $('input-mochex-enabled').checked = !!c.enabled;
+    $('input-mochex-notify').checked = c.notify !== false;
+    $('input-mochex-url').value = c.apiUrl || '';
+    $('input-mochex-key').value = c.apiKey || '';
+    $('mochex-test-result').style.display = 'none';
+    const badge = $('mochex-status-badge');
+    badge.textContent = c.enabled ? (c.hasKey ? 'Active & Configured' : 'Missing Key') : 'Disabled';
+    badge.style.color = c.enabled && c.hasKey ? '#3fb950' : '#8b949e';
+    badge.style.borderColor = c.enabled && c.hasKey ? '#2ea043' : '#30363d';
+    $('mochex-modal').style.display = 'flex';
+  } catch (err) {
+    alert('Failed to load MOCHEX config: ' + err.message);
+  }
+};
+
+$('mochex-key-toggle').onclick = () => {
+  const input = $('input-mochex-key');
+  input.type = input.type === 'password' ? 'text' : 'password';
+};
+
+$('mochex-test-btn').onclick = async () => {
+  const btn = $('mochex-test-btn');
+  const resBox = $('mochex-test-result');
+  const origText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = 'Testing...';
+  resBox.style.display = 'none';
+
+  try {
+    const url = $('input-mochex-url').value.trim();
+    const apiKey = $('input-mochex-key').value.trim();
+    const result = await api('/api/mochex/test', {
+      method: 'POST',
+      body: { apiUrl: url, apiKey }
+    });
+
+    resBox.style.display = 'block';
+    if (result.ok) {
+      resBox.style.background = '#0d2818';
+      resBox.style.border = '1px solid #2ea043';
+      resBox.style.color = '#3fb950';
+      resBox.innerHTML = '✅ <strong>Connected successfully!</strong> MOCHEX authenticated (Active trades: ' + (result.active_count ?? 0) + ')';
+      $('mochex-status-badge').textContent = 'Connected';
+      $('mochex-status-badge').style.color = '#3fb950';
+      $('mochex-status-badge').style.borderColor = '#2ea043';
+    } else {
+      resBox.style.background = '#2d1515';
+      resBox.style.border = '1px solid #f85149';
+      resBox.style.color = '#f85149';
+      resBox.innerHTML = '❌ <strong>Connection failed:</strong> ' + esc(result.error || 'Check URL and API key');
+      $('mochex-status-badge').textContent = 'Error';
+      $('mochex-status-badge').style.color = '#f85149';
+      $('mochex-status-badge').style.borderColor = '#f85149';
+    }
+  } catch (err) {
+    resBox.style.display = 'block';
+    resBox.style.background = '#2d1515';
+    resBox.style.border = '1px solid #f85149';
+    resBox.style.color = '#f85149';
+    resBox.innerHTML = '❌ <strong>Error:</strong> ' + esc(err.message);
+  } finally {
+    btn.innerHTML = origText;
+    btn.disabled = false;
+  }
+};
+
+$('save-mochex-btn').onclick = async () => {
+  const btn = $('save-mochex-btn');
+  const origText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = 'Saving...';
+
+  try {
+    const enabled = $('input-mochex-enabled').checked;
+    const notify = $('input-mochex-notify').checked;
+    const apiUrl = $('input-mochex-url').value.trim();
+    const apiKey = $('input-mochex-key').value.trim();
+
+    await api('/api/mochex/config', {
+      method: 'POST',
+      body: { enabled, notify, apiUrl, apiKey }
+    });
+
+    btn.innerHTML = '✅ Saved!';
+    setTimeout(() => {
+      btn.innerHTML = origText;
+      btn.disabled = false;
+      $('mochex-modal').style.display = 'none';
+    }, 600);
+  } catch (err) {
+    alert('Failed to save MOCHEX settings: ' + err.message);
+    btn.innerHTML = origText;
+    btn.disabled = false;
+  }
+};
+
+function connect() {
+  const es = new EventSource('/api/events');
+  es.addEventListener('open', () => { $('conn').textContent = 'connected'; $('conn').style.color = 'var(--green)'; });
+  es.addEventListener('error', () => { $('conn').textContent = 'reconnecting'; $('conn').style.color = 'var(--amber)'; });
+  es.addEventListener('state_full', e => {
+    state = JSON.parse(e.data);
+    renderMeta();
+    renderWl();
+    renderTrades();
+    renderPerformance();
+    if (currentTab === 'journal' && currentJournalSymbol) {
+      openJournal(currentJournalSymbol, false);
+    }
+  });
+  es.addEventListener('state', e => {
+    const data = JSON.parse(e.data);
+    if (data.removed) {
+      state.watchlist = (state.watchlist || []).filter(w => w.symbol !== data.symbol);
+      const row = $('wl').querySelector(`tr[data-sym="${esc(data.symbol)}"]`);
+      if (row) row.remove();
+      $('wl-count').textContent = `(${state.watchlist.length} symbols active)`;
+      return;
+    }
+    const { symbol, setup } = data;
+    const row = state.watchlist.find(w => w.symbol === symbol);
+    if (row) row.state = setup;
+    renderWl();
+    if (currentTab === 'journal' && currentJournalSymbol === symbol) {
+      openJournal(symbol, false);
+    }
+  });
+  es.addEventListener('alert', e => {
+    const { setup } = JSON.parse(e.data);
+    loadAlerts();
+    if (setup.stage === 'ENTRY_READY') {
+      startSiren(`ENTRY READY: ${setup.symbol} ${setup.direction}`);
+    } else if (setup.stage === 'ARMED') {
+      playChime();
+    }
+    if (currentTab === 'journal' && currentJournalSymbol === setup.symbol) {
+      openJournal(setup.symbol, false);
+    }
+  });
+  es.addEventListener('milestone', () => {
+    load();
+    playChime();
+    if (currentTab === 'journal' && currentJournalSymbol) {
+      openJournal(currentJournalSymbol, false);
+    }
+  });
+  es.addEventListener('trade_opened', () => {
+    load();
+    if (currentTab === 'journal' && currentJournalSymbol) {
+      openJournal(currentJournalSymbol, false);
+    }
+  });
+}
+
+$('add').onclick = async () => {
+  const symbol = $('q').value.trim(); if (!symbol) return;
+  $('msg').textContent = 'adding…';
+  const r = await api('/api/watchlist', { method: 'POST', body: { symbol } });
+  $('msg').textContent = r.msg || r.error || ''; $('q').value = ''; $('sugg').hidden = true; load();
+};
+let t;
+$('q').oninput = () => {
+  clearTimeout(t);
+  t = setTimeout(async () => {
+    const q = $('q').value.trim(); if (!q) { $('sugg').hidden = true; return; }
+    const list = await api('/api/symbols?q=' + encodeURIComponent(q));
+    $('sugg').innerHTML = list.map(s => `<div data-s="${esc(s)}">${esc(s)}</div>`).join('');
+    $('sugg').hidden = list.length === 0;
+  }, 200);
+};
+$('sugg').onclick = e => { const s = e.target.dataset.s; if (s) { $('q').value = s; $('sugg').hidden = true; } };
+$('q').onkeydown = e => { if (e.key === 'Enter') $('add').click(); };
+$('wl').onclick = async e => {
+  const btn = e.target.closest('button[data-rm]');
+  if (!btn) return;
+  const s = btn.dataset.rm;
+  if (!s) return;
+
+  btn.disabled = true;
+  btn.textContent = '…';
+
+  try {
+    await api('/api/watchlist/' + encodeURIComponent(s), { method: 'DELETE' });
+    state.watchlist = (state.watchlist || []).filter(w => w.symbol !== s);
+    const tr = $('wl').querySelector(`tr[data-sym="${esc(s)}"]`);
+    if (tr) tr.remove();
+    $('wl-count').textContent = `(${state.watchlist.length} symbols active)`;
+  } catch (err) {
+    alert('Failed to remove ' + s + ': ' + err.message);
+    btn.disabled = false;
+    btn.textContent = '✕';
+  }
+};
+
+$('wl').onchange = async e => {
+  const kzSel = e.target.closest('select[data-kz]');
+  if (kzSel) {
+    const kzSym = kzSel.dataset.kz;
+    const v = kzSel.value;
+    kzSel.disabled = true;
+    try {
+      await api('/api/watchlist/' + encodeURIComponent(kzSym), {
+        method: 'PATCH',
+        body: { killzone: v === '' ? null : v === '1' }
+      });
+      const row = (state.watchlist || []).find(w => w.symbol === kzSym);
+      if (row) row.killzone = v === '' ? null : v === '1' ? 1 : 0;
+    } catch (err) {
+      alert('Failed to update killzone: ' + err.message);
+    } finally {
+      kzSel.disabled = false;
+    }
+    return;
+  }
+
+  const stratSel = e.target.closest('select[data-strat]');
+  if (stratSel) {
+    const stratSym = stratSel.dataset.strat;
+    const v = stratSel.value;
+    stratSel.disabled = true;
+    try {
+      await api('/api/watchlist/' + encodeURIComponent(stratSym), {
+        method: 'PATCH',
+        body: { strategy: v }
+      });
+      const row = (state.watchlist || []).find(w => w.symbol === stratSym);
+      if (row) row.strategy = v;
+    } catch (err) {
+      alert('Failed to update strategy: ' + err.message);
+    } finally {
+      stratSel.disabled = false;
+    }
+    return;
+  }
+};
+$('kz').onchange = async () => { state = await api('/api/settings', { method: 'POST', body: { killzone: $('kz').checked } }); renderMeta(); };
+$('scanner').onchange = async () => {
+  $('scanner').disabled = true;
+  state = await api('/api/settings', { method: 'POST', body: { auto_scanner: $('scanner').checked } });
+  renderMeta();
+  renderWl();
+  $('scanner').disabled = false;
+};
+if ($('meme-scanner')) $('meme-scanner').onchange = async () => {
+  $('meme-scanner').disabled = true;
+  state = await api('/api/settings', { method: 'POST', body: { meme_scanner: $('meme-scanner').checked } });
+  renderMeta(); renderWl();
+  $('meme-scanner').disabled = false;
+};
+if ($('ai-scanner')) $('ai-scanner').onchange = async () => {
+  $('ai-scanner').disabled = true;
+  state = await api('/api/settings', { method: 'POST', body: { ai_scanner: $('ai-scanner').checked } });
+  renderMeta(); renderWl();
+  $('ai-scanner').disabled = false;
+};
+if ($('game-scanner')) $('game-scanner').onchange = async () => {
+  $('game-scanner').disabled = true;
+  state = await api('/api/settings', { method: 'POST', body: { game_scanner: $('game-scanner').checked } });
+  renderMeta(); renderWl();
+  $('game-scanner').disabled = false;
+};
+if ($('gainers-scanner')) $('gainers-scanner').onchange = async () => {
+  $('gainers-scanner').disabled = true;
+  state = await api('/api/settings', { method: 'POST', body: { gainers_scanner: $('gainers-scanner').checked } });
+  renderMeta(); renderWl();
+  $('gainers-scanner').disabled = false;
+};
+if ($('losers-scanner')) $('losers-scanner').onchange = async () => {
+  $('losers-scanner').disabled = true;
+  state = await api('/api/settings', { method: 'POST', body: { losers_scanner: $('losers-scanner').checked } });
+  renderMeta(); renderWl();
+  $('losers-scanner').disabled = false;
+};
+if ($('ultra-lev-scanner')) $('ultra-lev-scanner').onchange = async () => {
+  $('ultra-lev-scanner').disabled = true;
+  state = await api('/api/settings', { method: 'POST', body: { ultra_lev_scanner: $('ultra-lev-scanner').checked } });
+  renderMeta(); renderWl();
+  $('ultra-lev-scanner').disabled = false;
+};
+if ($('btn-open-scanner-modal')) $('btn-open-scanner-modal').onclick = () => {
+  $('modal-feed-vol').checked = !!state.autoScanner;
+  $('modal-feed-meme').checked = !!state.memeScanner;
+  $('modal-feed-ai').checked = !!state.aiScanner;
+  $('modal-feed-game').checked = !!state.gameScanner;
+  $('modal-feed-gain').checked = !!state.gainersScanner;
+  $('modal-feed-dip').checked = !!state.losersScanner;
+  $('modal-feed-ultra').checked = !!state.ultraLevScanner;
+  $('input-min-gainer-vol').value = state.minGainerVolume ?? 5000000;
+  $('input-min-leverage').value = String(state.minLeverage ?? 1);
+  $('input-max-active-coins').value = state.maxActiveCoins ?? 150;
+  $('scanner-modal').style.display = 'flex';
+};
+if ($('save-scanner-btn')) $('save-scanner-btn').onclick = async () => {
+  const btn = $('save-scanner-btn');
+  const orig = btn.textContent;
+  btn.textContent = '⏳ Saving & Scanning...';
+  btn.disabled = true;
+  try {
+    state = await api('/api/settings', {
+      method: 'POST',
+      body: {
+        auto_scanner: $('modal-feed-vol').checked,
+        meme_scanner: $('modal-feed-meme').checked,
+        ai_scanner: $('modal-feed-ai').checked,
+        game_scanner: $('modal-feed-game').checked,
+        gainers_scanner: $('modal-feed-gain').checked,
+        losers_scanner: $('modal-feed-dip').checked,
+        ultra_lev_scanner: $('modal-feed-ultra').checked,
+        min_gainer_volume: Number($('input-min-gainer-vol').value) || 5000000,
+        min_leverage: Number($('input-min-leverage').value) || 1,
+        max_active_coins: Number($('input-max-active-coins').value) || 150,
+      }
+    });
+    renderMeta();
+    renderWl();
+    $('scanner-modal').style.display = 'none';
+  } catch (err) {
+    alert('Failed to save scanner settings: ' + err.message);
+  } finally {
+    btn.textContent = orig;
+    btn.disabled = false;
+  }
+};
+if ($('wl-sector-filter')) $('wl-sector-filter').onchange = () => { renderWl(); };
+$('mute').onchange = async () => { state = await api('/api/settings', { method: 'POST', body: { muted: $('mute').checked } }); renderMeta(); };
+
+load().then(loadAlerts).then(connect).then(handleRoute);
+</script>
+</body>
+</html>

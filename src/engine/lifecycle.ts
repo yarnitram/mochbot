@@ -37,6 +37,7 @@ export class LifecycleManager extends EventEmitter {
       }
       return existing;
     }
+    if (setup.setupId && this.db.hasTradeSetup(setup.setupId)) return null;
 
     const margin = setup.sizing?.margin ?? this.db.getDefaultMargin();
     const leverage = setup.sizing?.leverage ?? 50;
@@ -111,12 +112,15 @@ export class LifecycleManager extends EventEmitter {
     const slDistPct = Math.abs(entry - trade.sl_price) / entry;
     const tp1DistPct = Math.abs(entry - trade.tp1_price) / entry;
     const tp2DistPct = Math.abs(entry - trade.tp2_price) / entry;
+    const initialRisk = Math.abs(entry - (trade.initial_sl_price ?? (trade.status === 'OPEN' ? trade.sl_price : entry - (trade.tp1_price-entry)/3)));
+    const tp1R = Math.abs(trade.tp1_price-entry) / initialRisk;
+    const tp2R = Math.abs(trade.tp2_price-entry) / initialRisk;
 
     if (trade.status === 'OPEN') {
       const hitTp1 = isLong ? candle.h >= trade.tp1_price : candle.l <= trade.tp1_price;
       const hitSl = isLong ? candle.l <= trade.sl_price : candle.h >= trade.sl_price;
 
-      if (hitTp1) {
+      if (hitTp1 && !hitSl) {
         // TP1 Hit -> Move SL to Break-Even (entry price)
         this.db.updateTradeStatus(trade.id, 'TP1_HIT');
         this.db.updateTradeSl(trade.id, trade.entry_price);
@@ -126,10 +130,10 @@ export class LifecycleManager extends EventEmitter {
         const tp1Usd = notional * tp1DistPct * 0.5;
 
         const msg = [
-          `🎯 TP1 (1:3 RR) HIT: ${trade.symbol} ${trade.direction} 🟢`,
-          `Target reached at ${fmt(trade.tp1_price)} (+1.5R | +$${tp1Usd.toFixed(2)} USDT secured)!`,
+          `🎯 TP1 (${tp1R.toFixed(2)}R) HIT: ${trade.symbol} ${trade.direction} 🟢`,
+          `Target reached at ${fmt(trade.tp1_price)} (+${(tp1R/2).toFixed(2)}R | +$${tp1Usd.toFixed(2)} USDT secured)!`,
           `👉 MOVE STOP LOSS TO BREAK-EVEN (${fmt(trade.entry_price)})`,
-          `50% position secured for +1.5R. Runner active towards TP2 (${fmt(trade.tp2_price)}).`,
+          `50% position secured. Runner active towards TP2 (${fmt(trade.tp2_price)}).`,
           mexcLink(trade.symbol),
         ].join('\n');
 
@@ -160,20 +164,20 @@ export class LifecycleManager extends EventEmitter {
       const hitTp2 = isLong ? candle.h >= trade.tp2_price : candle.l <= trade.tp2_price;
       const hitBe = isLong ? candle.l <= trade.sl_price : candle.h >= trade.sl_price;
 
-      if (hitTp2) {
+      if (hitTp2 && !hitBe) {
         // TP2 runner target achieved (+4.0R blended)
         const tp2Usd = notional * (tp2DistPct * 0.5 + tp1DistPct * 0.5);
         const pnlUsd = Number(tp2Usd.toFixed(2));
-        this.db.updateTradeStatus(trade.id, 'CLOSED_TP2', 4.0, candle.t, pnlUsd);
+        this.db.updateTradeStatus(trade.id, 'CLOSED_TP2', (tp1R+tp2R)/2, candle.t, pnlUsd);
         trade.status = 'CLOSED_TP2';
-        trade.pnl_r = 4.0;
+        trade.pnl_r = (tp1R+tp2R)/2;
         trade.pnl_usd = pnlUsd;
         trade.closed_at = candle.t;
 
         const msg = [
-          `🚀 TP2 (1:5 RR) HIT: ${trade.symbol} ${trade.direction} 🏆`,
+          `🚀 TP2 (${tp2R.toFixed(2)}R) HIT: ${trade.symbol} ${trade.direction} 🏆`,
           `Full runner target reached at ${fmt(trade.tp2_price)}!`,
-          `Trade completed with +4.0R (+$${tp2Usd.toFixed(2)} USDT) total profit! 🎉`,
+          `Trade completed with +${trade.pnl_r.toFixed(2)}R (+$${tp2Usd.toFixed(2)} USDT) total profit!`,
           mexcLink(trade.symbol),
         ].join('\n');
 
@@ -184,16 +188,16 @@ export class LifecycleManager extends EventEmitter {
         // Runner stopped out at Break-Even (+1.5R captured at TP1)
         const beUsd = notional * (tp1DistPct * 0.5);
         const pnlUsd = Number(beUsd.toFixed(2));
-        this.db.updateTradeStatus(trade.id, 'CLOSED_BE', 1.5, candle.t, pnlUsd);
+        this.db.updateTradeStatus(trade.id, 'CLOSED_BE', tp1R/2, candle.t, pnlUsd);
         trade.status = 'CLOSED_BE';
-        trade.pnl_r = 1.5;
+        trade.pnl_r = tp1R/2;
         trade.pnl_usd = pnlUsd;
         trade.closed_at = candle.t;
 
         const msg = [
           `🛡️ BREAK-EVEN HIT: ${trade.symbol} ${trade.direction}`,
           `Runner closed at Break-Even (${fmt(trade.sl_price)}).`,
-          `Trade secured +1.5R (+$${beUsd.toFixed(2)} USDT) profit from TP1.`,
+          `Trade secured +${trade.pnl_r.toFixed(2)}R (+$${beUsd.toFixed(2)} USDT) profit from TP1.`,
           mexcLink(trade.symbol),
         ].join('\n');
 
