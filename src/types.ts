@@ -12,7 +12,7 @@ export type Stage = 'IDLE' | 'WATCH' | 'ARMED' | 'ENTRY_READY';
 export type Direction = 'LONG' | 'SHORT';
 export type Sensitivity = 'strict' | 'balanced' | 'sensitive';
 export type OrderType = 'MARKET' | 'LIMIT' | 'TRIGGER_LIMIT';
-export type StrategyId = 'MOD-01' | 'MOD-01D';
+export type StrategyId = 'MOD-01' | 'MOD-01D' | 'MOD-01E';
 
 export interface Mod01dCfg {
   biasTfMinutes: number;
@@ -35,6 +35,51 @@ export interface Mod01dCfg {
   rrTP2: number;
   watchDistanceAtr: number;
 }
+
+
+export interface Mod01eCfg {
+  biasTfMinutes: number;
+  alignTfMinutes: number;
+  entryTfMinutes: number;
+  biasPivotLen: number;
+  alignPivotLen: number;
+  entryPivotLen: number;
+  requireAlignment: boolean;
+  breakRule: 'Body close' | 'Wick';
+  entryFib: number;
+  zoneNear: number;
+  zoneFar: number;
+  orderExpiry: number;
+  cancelBiasFlip: boolean;
+  cancelNewChoch: boolean;
+  useKillzone: boolean;
+  stopBufferAtr: number;
+  rrTP1: number;
+  rrTP2: number;
+  watchDistanceAtr: number;
+}
+
+export const DEFAULT_MOD01E_CFG: Mod01eCfg = {
+  biasTfMinutes: 60,
+  alignTfMinutes: 15,
+  entryTfMinutes: 5,
+  biasPivotLen: 3,
+  alignPivotLen: 3,
+  entryPivotLen: 3,
+  requireAlignment: true,
+  breakRule: 'Body close',
+  entryFib: 0.618,
+  zoneNear: 0.5,
+  zoneFar: 0.786,
+  orderExpiry: 18,
+  cancelBiasFlip: true,
+  cancelNewChoch: true,
+  useKillzone: true,
+  stopBufferAtr: 0.15,
+  rrTP1: 3.0,
+  rrTP2: 5.0,
+  watchDistanceAtr: 1.0,
+};
 
 export const DEFAULT_MOD01D_CFG: Mod01dCfg = {
   biasTfMinutes: 240,

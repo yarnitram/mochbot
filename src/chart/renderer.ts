@@ -270,8 +270,8 @@ export function generateChartSvg(symbol: string, htfCandles: Candle[], ltfCandle
   } : null;
 
   const dateStr = new Date(setup.ts * 1000).toUTCString();
-  const htfTitle = setup.strategyId === 'MOD-01D' ? '1H Higher Timeframe (POI Context)' : '15m Higher Timeframe (POI Context)';
-  const ltfTitle = setup.strategyId === 'MOD-01D' ? '5m Execution Timeframe (TradingView Position & Levels)' : `${setup.ltfMinutes ?? 3}m Execution Timeframe (TradingView Position & Levels)`;
+  const htfTitle = setup.strategyId === 'MOD-01D' ? '1H Higher Timeframe (POI Context)' : setup.strategyId === 'MOD-01E' ? '1H Bias & 15m Dealing Range' : '15m Higher Timeframe (POI Context)';
+  const ltfTitle = (setup.strategyId === 'MOD-01D' || setup.strategyId === 'MOD-01E') ? '5m Execution Timeframe (TradingView Position & Levels)' : `${setup.ltfMinutes ?? 3}m Execution Timeframe (TradingView Position & Levels)`;
 
   return `
 <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="background:#0d1117;">

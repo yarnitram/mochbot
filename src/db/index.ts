@@ -295,7 +295,7 @@ export class Db {
 
   getGlobalStrategy(): StrategyId {
     const v = this.getSetting('global_strategy');
-    return v === 'MOD-01D' ? 'MOD-01D' : 'MOD-01';
+    return v === 'MOD-01D' ? 'MOD-01D' : v === 'MOD-01E' ? 'MOD-01E' : 'MOD-01';
   }
 
   setGlobalStrategy(strat: StrategyId): void {

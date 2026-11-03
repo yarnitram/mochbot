@@ -254,6 +254,7 @@
             <option value="ALL">All Strategies</option>
             <option value="MOD-01">MOD-01 Only</option>
             <option value="MOD-01D">MOD-01D Only</option>
+            <option value="MOD-01E">MOD-01E Only</option>
           </select>
         </div>
       </h2>
@@ -418,6 +419,7 @@
       <button id="tab-strat-global" class="nav-btn active" style="font-size:12px; padding:4px 10px;">Global Default</button>
       <button id="tab-strat-mod01" class="nav-btn" style="font-size:12px; padding:4px 10px;">MOD-01 (15m/1m)</button>
       <button id="tab-strat-mod01d" class="nav-btn" style="font-size:12px; padding:4px 10px;">MOD-01D (Top-Down)</button>
+      <button id="tab-strat-mod01e" class="nav-btn" style="font-size:12px; padding:4px 10px;">MOD-01E (Fib Limit)</button>
     </div>
 
     <!-- PANE 1: GLOBAL DEFAULT -->
@@ -427,6 +429,7 @@
         <select id="input-global-strategy" style="width:100%; padding:6px 8px;">
           <option value="MOD-01">MOD-01: 15m POI → 1m CHoCH Confirmation</option>
           <option value="MOD-01D">MOD-01D: Strict Top-Down (4H Bias → 1H POI → 15m Reaction → 5m Entry)</option>
+          <option value="MOD-01E">MOD-01E: 1H–15m Alignment & 5m Fib Limit Retest (0.618 OTE)</option>
         </select>
         <small class="mut" style="display:block; margin-top:6px;">Auto-scanned volume leaders will automatically be assigned this strategy unless overridden in the watchlist.</small>
       </div>
@@ -505,6 +508,64 @@
         </div>
         <div style="grid-column:1 / -1;">
           <label class="pill" style="margin-top:4px;"><input type="checkbox" id="input-mod01d-requirefvg"> Require 1H FVG or Structure BOS for POI</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- PANE 4: MOD-01E -->
+    <div id="pane-strat-mod01e" style="display:none;">
+      <p style="font-size:12px; color:#8b949e; margin-top:0;">1H Master Bias + 15m Alignment + 15m CHoCH Dealing Range → 5m Limit Retest at 0.618 Fib OTE.</p>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">Limit Entry Fib Level</label>
+          <select id="input-mod01e-entryfib" style="width:100%; padding:5px 7px;">
+            <option value="0.382">0.382 (Shallow Retrace)</option>
+            <option value="0.5">0.500 (Equilibrium / Halfway)</option>
+            <option value="0.618" selected>0.618 (Golden Pocket OTE - Default)</option>
+            <option value="0.786">0.786 (Deep Discount/Premium)</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">Limit Expiry (5m Bars)</label>
+          <input id="input-mod01e-expiry" type="number" min="3" max="120" step="1" style="width:100%; padding:5px 7px;" value="18">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">Fib Entry Zone (Near Edge)</label>
+          <select id="input-mod01e-zonenear" style="width:100%; padding:5px 7px;">
+            <option value="0.382">0.382</option>
+            <option value="0.5" selected>0.500 (Default)</option>
+            <option value="0.618">0.618</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">Fib Entry Zone (Far Edge)</label>
+          <select id="input-mod01e-zonefar" style="width:100%; padding:5px 7px;">
+            <option value="0.618">0.618</option>
+            <option value="0.786" selected>0.786 (Default)</option>
+            <option value="1.0">1.000 (Full Origin)</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">Stop Buffer ATR (15m ATR)</label>
+          <input id="input-mod01e-atrbuffer" type="number" min="0.0" max="1" step="0.05" style="width:100%; padding:5px 7px;" value="0.15">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">CHoCH Break Rule</label>
+          <select id="input-mod01e-breakrule" style="width:100%; padding:5px 7px;">
+            <option value="Body close" selected>Body close (Strict)</option>
+            <option value="Wick">Wick (Aggressive)</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">TP1 Multiple (R)</label>
+          <input id="input-mod01e-tp1rr" type="number" min="1" max="10" step="0.5" style="width:100%; padding:5px 7px;" value="3.0">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px;" class="mut">TP2 Multiple (R)</label>
+          <input id="input-mod01e-tp2rr" type="number" min="2" max="20" step="0.5" style="width:100%; padding:5px 7px;" value="5.0">
+        </div>
+        <div style="grid-column:1 / -1;">
+          <label class="pill" style="margin-top:4px;"><input type="checkbox" id="input-mod01e-requirealign" checked> Require 1H Master Bias and 15m Structure Alignment</label>
         </div>
       </div>
     </div>
@@ -774,7 +835,7 @@ function detail(s) {
   if (!s) return '<span class="mut">waiting for data</span>';
   if (s.stage === 'WATCH') return `${s.distanceAtr ? s.distanceAtr.toFixed(2) : '-'} ATR(15m) from POI`;
   if (s.stage === 'ARMED') {
-    const tfBreak = s.strategyId === 'MOD-01D' ? '5m' : (s.ltfMinutes || 1) + 'm';
+    const tfBreak = (s.strategyId === 'MOD-01D' || s.strategyId === 'MOD-01E') ? '5m' : (s.ltfMinutes || 1) + 'm';
     return `need ${tfBreak} close ${s.direction === 'LONG' ? 'above' : 'below'} ${fmt(s.needBreak)}<br><small>${s.barsSinceTap ?? 0} bars since tap</small>`;
   }
   if (s.stage === 'ENTRY_READY') {
@@ -841,6 +902,7 @@ function renderWl() {
           <select data-strat="${esc(w.symbol)}" style="padding:2px 6px; font-size:11px;">
             <option value="MOD-01" ${curStrat === 'MOD-01' ? 'selected' : ''}>MOD-01</option>
             <option value="MOD-01D" ${curStrat === 'MOD-01D' ? 'selected' : ''}>MOD-01D</option>
+            <option value="MOD-01E" ${curStrat === 'MOD-01E' ? 'selected' : ''}>MOD-01E</option>
           </select>
         </td>
         <td class="col-stage"><span class="badge ${stage}">${stage.replace('_',' ')}</span></td>
@@ -1226,15 +1288,18 @@ function switchStratTab(paneId) {
   $('pane-strat-global').style.display = paneId === 'global' ? 'block' : 'none';
   $('pane-strat-mod01').style.display = paneId === 'mod01' ? 'block' : 'none';
   $('pane-strat-mod01d').style.display = paneId === 'mod01d' ? 'block' : 'none';
+  $('pane-strat-mod01e').style.display = paneId === 'mod01e' ? 'block' : 'none';
 
   $('tab-strat-global').classList.toggle('active', paneId === 'global');
   $('tab-strat-mod01').classList.toggle('active', paneId === 'mod01');
   $('tab-strat-mod01d').classList.toggle('active', paneId === 'mod01d');
+  $('tab-strat-mod01e').classList.toggle('active', paneId === 'mod01e');
 }
 
 $('tab-strat-global').onclick = () => switchStratTab('global');
 $('tab-strat-mod01').onclick = () => switchStratTab('mod01');
 $('tab-strat-mod01d').onclick = () => switchStratTab('mod01d');
+$('tab-strat-mod01e').onclick = () => switchStratTab('mod01e');
 
 $('strategy-settings-btn').onclick = async () => {
   try {
@@ -1260,6 +1325,17 @@ $('strategy-settings-btn').onclick = async () => {
     $('input-mod01d-tp1rr').value = mod01d.tp1Rr ?? 3.0;
     $('input-mod01d-tp2rr').value = mod01d.tp2Rr ?? 5.0;
     $('input-mod01d-requirefvg').checked = mod01d.requireFvgOrBos !== false;
+
+    const mod01e = data.strategies.find(s => s.id === 'MOD-01E')?.config || {};
+    $('input-mod01e-entryfib').value = String(mod01e.entryFib ?? 0.618);
+    $('input-mod01e-expiry').value = mod01e.orderExpiry ?? 18;
+    $('input-mod01e-zonenear').value = String(mod01e.zoneNear ?? 0.5);
+    $('input-mod01e-zonefar').value = String(mod01e.zoneFar ?? 0.786);
+    $('input-mod01e-atrbuffer').value = mod01e.stopBufferAtr ?? 0.15;
+    $('input-mod01e-breakrule').value = mod01e.breakRule ?? 'Body close';
+    $('input-mod01e-tp1rr').value = mod01e.rrTP1 ?? 3.0;
+    $('input-mod01e-tp2rr').value = mod01e.rrTP2 ?? 5.0;
+    $('input-mod01e-requirealign').checked = mod01e.requireAlignment !== false;
 
     switchStratTab('global');
     $('strategy-modal').style.display = 'flex';
@@ -1310,12 +1386,25 @@ $('save-strategies-btn').onclick = async () => {
       requireFvgOrBos: $('input-mod01d-requirefvg').checked,
     };
 
+    const mod01eCfg = {
+      entryFib: parseFloat($('input-mod01e-entryfib').value) || 0.618,
+      orderExpiry: parseInt($('input-mod01e-expiry').value) || 18,
+      zoneNear: parseFloat($('input-mod01e-zonenear').value) || 0.5,
+      zoneFar: parseFloat($('input-mod01e-zonefar').value) || 0.786,
+      stopBufferAtr: parseFloat($('input-mod01e-atrbuffer').value) || 0.15,
+      breakRule: $('input-mod01e-breakrule').value || 'Body close',
+      rrTP1: parseFloat($('input-mod01e-tp1rr').value) || 3.0,
+      rrTP2: parseFloat($('input-mod01e-tp2rr').value) || 5.0,
+      requireAlignment: $('input-mod01e-requirealign').checked,
+    };
+
     await api('/api/strategies/settings', {
       method: 'POST',
       body: {
         globalStrategy: globalStrat,
         mod01: mod01Cfg,
         mod01d: mod01dCfg,
+        mod01e: mod01eCfg,
       },
     });
 

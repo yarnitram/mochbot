@@ -145,6 +145,12 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
               description: '4H Bias → 1H Strict POI (liquidity sweep + displacement) → 15m Reaction CHoCH → 5m Entry CHoCH.',
               config: db.getStrategyCfg('MOD-01D'),
             },
+            {
+              id: 'MOD-01E',
+              name: 'MOD-01E: 1H–15m Alignment & 5m Fib Limit',
+              description: '1H Bias + 15m Alignment + 15m CHoCH Dealing Range → 5m Limit Retest at 0.618 Fib OTE.',
+              config: db.getStrategyCfg('MOD-01E'),
+            },
           ],
         });
       }
@@ -158,7 +164,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
 
       if (path === '/api/strategies/settings' && req.method === 'POST') {
         const b = await readBody(req);
-        if (b.globalStrategy && (b.globalStrategy === 'MOD-01' || b.globalStrategy === 'MOD-01D')) {
+        if (b.globalStrategy && (b.globalStrategy === 'MOD-01' || b.globalStrategy === 'MOD-01D' || b.globalStrategy === 'MOD-01E')) {
           db.setGlobalStrategy(b.globalStrategy);
         }
         if (b.mod01 && typeof b.mod01 === 'object') {
@@ -166,6 +172,9 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
         }
         if (b.mod01d && typeof b.mod01d === 'object') {
           db.setStrategyCfg('MOD-01D', b.mod01d);
+        }
+        if (b.mod01e && typeof b.mod01e === 'object') {
+          db.setStrategyCfg('MOD-01E', b.mod01e);
         }
         runner.reEvaluateAll();
         push('state_full', snapshot());
@@ -292,7 +301,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
           watch_distance: b.watch_distance === undefined ? undefined : b.watch_distance === null ? null : Number(b.watch_distance),
           strategy: b.strategy,
         });
-        if (b.strategy === 'MOD-01D') {
+        if (b.strategy === 'MOD-01D' || b.strategy === 'MOD-01E') {
           void runner.backfillHtf(sym);
         }
         runner.evaluateSymbol(sym);
@@ -358,7 +367,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
         if (typeof b.min_gainer_volume === 'number' && b.min_gainer_volume >= 0) runner.setMinGainerVolume(b.min_gainer_volume);
         if (typeof b.max_active_coins === 'number' && b.max_active_coins >= 10) runner.setMaxActiveCoins(b.max_active_coins);
         if (typeof b.min_leverage === 'number' && b.min_leverage >= 1) runner.setMinLeverage(b.min_leverage);
-        if (b.global_strategy && (b.global_strategy === 'MOD-01' || b.global_strategy === 'MOD-01D')) db.setGlobalStrategy(b.global_strategy);
+        if (b.global_strategy && (b.global_strategy === 'MOD-01' || b.global_strategy === 'MOD-01D' || b.global_strategy === 'MOD-01E')) db.setGlobalStrategy(b.global_strategy);
         if (typeof b.account_capital === 'number' && b.account_capital > 0) db.setAccountCapital(b.account_capital);
         if (typeof b.default_margin === 'number' && b.default_margin > 0) db.setDefaultMargin(b.default_margin);
         if (typeof b.risk_per_trade === 'number' && b.risk_per_trade > 0) db.setRiskPerTrade(b.risk_per_trade);

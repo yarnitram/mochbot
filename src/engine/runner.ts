@@ -7,8 +7,9 @@ import { CandleStore } from '../data/candleStore.js';
 import type { Candle, Setup, StrategyCfg } from '../types.js';
 import { evaluate } from '../strategy/mod01.js';
 import { evaluateMod01d } from '../strategy/mod01d.js';
+import { evaluateMod01e } from '../strategy/mod01e.js';
 import { aggregate } from '../strategy/indicators.js';
-import { StrategyId, Mod01dCfg, DEFAULT_MOD01D_CFG } from '../types.js';
+import { StrategyId, Mod01dCfg, DEFAULT_MOD01D_CFG, Mod01eCfg, DEFAULT_MOD01E_CFG } from '../types.js';
 import { AlertGate } from './alertGate.js';
 import { renderChartPng } from '../chart/renderer.js';
 import { LifecycleManager, type LifecycleEvent } from './lifecycle.js';
@@ -191,6 +192,10 @@ export class Runner extends EventEmitter {
     const custom = this.d.db.getStrategyCfg('MOD-01D') as Partial<Mod01dCfg>;
     return { ...DEFAULT_MOD01D_CFG, ...custom };
   }
+  mod01eCfg(symbol: string): Mod01eCfg {
+    const custom = this.d.db.getStrategyCfg('MOD-01E') as Partial<Mod01eCfg>;
+    return { ...DEFAULT_MOD01E_CFG, ...custom };
+  }
 
   strategyCfg(symbol: string): StrategyCfg {
     const row = this.d.db.listWatch().find(w => w.symbol === symbol);
@@ -246,7 +251,7 @@ export class Runner extends EventEmitter {
     const candles = await this.d.fetchKlines(symbol, this.d.cfg.historyBars, 'Min1');
     this.store.setHistory(symbol, candles);
     const strat = this.getStrategyForSymbol(symbol);
-    if (strat === 'MOD-01D') {
+    if (strat === 'MOD-01D' || strat === 'MOD-01E') {
       await this.backfillHtf(symbol);
     }
   }
@@ -443,6 +448,11 @@ export class Runner extends EventEmitter {
       if (!c4h || c4h.length < 5) c4h = aggregate(closed, 240);
       setup = evaluateMod01d(symbol, closed, this.store.forming(symbol), c1h, c4h, this.mod01dCfg(symbol));
       setup.strategyId = 'MOD-01D';
+    } else if (strategy === 'MOD-01E') {
+      let c1h = this.htf1h.get(symbol);
+      if (!c1h || c1h.length < 10) c1h = aggregate(closed, 60);
+      setup = evaluateMod01e(symbol, closed, this.store.forming(symbol), c1h, this.mod01eCfg(symbol));
+      setup.strategyId = 'MOD-01E';
     } else {
       setup = evaluate(symbol, closed, this.store.forming(symbol), this.strategyCfg(symbol));
       setup.strategyId = 'MOD-01';
@@ -498,7 +508,7 @@ export class Runner extends EventEmitter {
         const ltf = this.store.closed(setup.symbol);
         let htfCandles: Candle[];
         let ltfCandles: Candle[];
-        if (setup.strategyId === 'MOD-01D') {
+        if (setup.strategyId === 'MOD-01D' || setup.strategyId === 'MOD-01E') {
           htfCandles = this.htf1h.get(setup.symbol) ?? aggregate(ltf, 60);
           ltfCandles = aggregate(ltf, 5); // 5m execution
           setup.ltfMinutes = 5;
