@@ -648,32 +648,93 @@ function detail(s) {
 }
 
 function renderWl() {
-  const body = $('wl'); body.innerHTML = '';
+  const body = $('wl');
   $('empty').hidden = state.watchlist.length > 0;
   $('wl-count').textContent = `(${state.watchlist.length} symbols active)`;
+
+  const currentSymbols = new Set(state.watchlist.map(w => w.symbol));
+
+  // 1. Remove rows that are no longer in watchlist
+  for (const tr of Array.from(body.querySelectorAll('tr[data-sym]'))) {
+    if (!currentSymbols.has(tr.dataset.sym)) {
+      tr.remove();
+    }
+  }
+
+  // 2. Insert or update rows without blowing away active dropdowns
   for (const w of state.watchlist) {
-    const s = w.state, stage = s ? s.stage : 'IDLE';
-    const tag = w.is_auto === 2
-      ? '<span class="badge-tag tag-meme" style="background:#4a154b; color:#f472b6; border:1px solid #db2777;" title="Auto-scanned meme coin">MEME</span>'
-      : (w.is_auto === 1
-         ? '<span class="badge-tag tag-auto" title="Auto-scanned volume leader">AUTO</span>'
-         : '<span class="badge-tag tag-pinned" title="Manually pinned">PINNED</span>');
-    const tr = document.createElement('tr');
+    const s = w.state;
+    const stage = s ? s.stage : 'IDLE';
     const curStrat = w.strategy || 'MOD-01';
-    tr.innerHTML = `<td>${tag}</td>
-      <td><a class="coin-link" onclick="openJournal('${esc(w.symbol)}')">${esc(w.symbol)}</a></td>
-      <td><select data-strat="${esc(w.symbol)}" style="padding:2px 6px; font-size:11px;">
-        <option value="MOD-01" ${curStrat === 'MOD-01' ? 'selected' : ''}>MOD-01</option>
-        <option value="MOD-01D" ${curStrat === 'MOD-01D' ? 'selected' : ''}>MOD-01D</option>
-      </select></td>
-      <td><span class="badge ${stage}">${stage.replace('_',' ')}</span></td>
-      <td class="${s && s.direction === 'LONG' ? 'long' : 'short'}">${s && s.direction ? s.direction : ''}</td>
-      <td>${s ? fmt(s.price) : '-'}</td>
-      <td>${s && s.zone ? fmt(s.zone.bottom) + ' – ' + fmt(s.zone.top) : '-'}</td>
-      <td>${detail(s)}</td>
-      <td><select data-kz="${esc(w.symbol)}"><option value="">global</option><option value="1" ${w.killzone === 1 ? 'selected' : ''}>on</option><option value="0" ${w.killzone === 0 ? 'selected' : ''}>off</option></select></td>
-      <td><button class="x" data-rm="${esc(w.symbol)}" title="Remove">✕</button></td>`;
-    body.appendChild(tr);
+    let tr = body.querySelector(`tr[data-sym="${esc(w.symbol)}"]`);
+
+    if (!tr) {
+      tr = document.createElement('tr');
+      tr.dataset.sym = w.symbol;
+
+      const tag = w.is_auto === 2
+        ? '<span class="badge-tag tag-meme" style="background:#4a154b; color:#f472b6; border:1px solid #db2777;" title="Auto-scanned meme coin">MEME</span>'
+        : (w.is_auto === 1
+           ? '<span class="badge-tag tag-auto" title="Auto-scanned volume leader">AUTO</span>'
+           : '<span class="badge-tag tag-pinned" title="Manually pinned">PINNED</span>');
+
+      tr.innerHTML = `
+        <td class="col-tag">${tag}</td>
+        <td class="col-sym"><a class="coin-link" onclick="openJournal('${esc(w.symbol)}')">${esc(w.symbol)}</a></td>
+        <td class="col-strat">
+          <select data-strat="${esc(w.symbol)}" style="padding:2px 6px; font-size:11px;">
+            <option value="MOD-01" ${curStrat === 'MOD-01' ? 'selected' : ''}>MOD-01</option>
+            <option value="MOD-01D" ${curStrat === 'MOD-01D' ? 'selected' : ''}>MOD-01D</option>
+          </select>
+        </td>
+        <td class="col-stage"><span class="badge ${stage}">${stage.replace('_',' ')}</span></td>
+        <td class="col-dir ${s && s.direction === 'LONG' ? 'long' : 'short'}">${s && s.direction ? s.direction : ''}</td>
+        <td class="col-price">${s ? fmt(s.price) : '-'}</td>
+        <td class="col-zone">${s && s.zone ? fmt(s.zone.bottom) + ' – ' + fmt(s.zone.top) : '-'}</td>
+        <td class="col-detail">${detail(s)}</td>
+        <td class="col-kz">
+          <select data-kz="${esc(w.symbol)}">
+            <option value="">global</option>
+            <option value="1" ${w.killzone === 1 ? 'selected' : ''}>on</option>
+            <option value="0" ${w.killzone === 0 ? 'selected' : ''}>off</option>
+          </select>
+        </td>
+        <td class="col-rm">
+          <button class="x" data-rm="${esc(w.symbol)}" title="Remove">✕</button>
+        </td>
+      `;
+      body.appendChild(tr);
+    } else {
+      // Row exists: update only dynamic cells so active dropdowns/buttons are NOT destroyed
+      const stageEl = tr.querySelector('.col-stage');
+      if (stageEl) stageEl.innerHTML = `<span class="badge ${stage}">${stage.replace('_',' ')}</span>`;
+
+      const dirEl = tr.querySelector('.col-dir');
+      if (dirEl) {
+        dirEl.className = `col-dir ${s && s.direction === 'LONG' ? 'long' : 'short'}`;
+        dirEl.textContent = s && s.direction ? s.direction : '';
+      }
+
+      const priceEl = tr.querySelector('.col-price');
+      if (priceEl) priceEl.textContent = s ? fmt(s.price) : '-';
+
+      const zoneEl = tr.querySelector('.col-zone');
+      if (zoneEl) zoneEl.textContent = s && s.zone ? fmt(s.zone.bottom) + ' – ' + fmt(s.zone.top) : '-';
+
+      const detailEl = tr.querySelector('.col-detail');
+      if (detailEl) detailEl.innerHTML = detail(s);
+
+      // Only sync dropdown value if not currently focused by user
+      const stratSel = tr.querySelector(`select[data-strat="${esc(w.symbol)}"]`);
+      if (stratSel && document.activeElement !== stratSel) {
+        stratSel.value = curStrat;
+      }
+
+      const kzSel = tr.querySelector(`select[data-kz="${esc(w.symbol)}"]`);
+      if (kzSel && document.activeElement !== kzSel) {
+        kzSel.value = w.killzone === 1 ? '1' : w.killzone === 0 ? '0' : '';
+      }
+    }
   }
 }
 
@@ -1165,7 +1226,15 @@ function connect() {
     }
   });
   es.addEventListener('state', e => {
-    const { symbol, setup } = JSON.parse(e.data);
+    const data = JSON.parse(e.data);
+    if (data.removed) {
+      state.watchlist = (state.watchlist || []).filter(w => w.symbol !== data.symbol);
+      const row = $('wl').querySelector(`tr[data-sym="${esc(data.symbol)}"]`);
+      if (row) row.remove();
+      $('wl-count').textContent = `(${state.watchlist.length} symbols active)`;
+      return;
+    }
+    const { symbol, setup } = data;
     const row = state.watchlist.find(w => w.symbol === symbol);
     if (row) row.state = setup;
     renderWl();
@@ -1218,20 +1287,66 @@ $('q').oninput = () => {
 };
 $('sugg').onclick = e => { const s = e.target.dataset.s; if (s) { $('q').value = s; $('sugg').hidden = true; } };
 $('q').onkeydown = e => { if (e.key === 'Enter') $('add').click(); };
-$('wl').onclick = async e => { const s = e.target.dataset.rm; if (s) { await api('/api/watchlist/' + s, { method: 'DELETE' }); load(); } };
+$('wl').onclick = async e => {
+  const btn = e.target.closest('button[data-rm]');
+  if (!btn) return;
+  const s = btn.dataset.rm;
+  if (!s) return;
+
+  btn.disabled = true;
+  btn.textContent = '…';
+
+  try {
+    await api('/api/watchlist/' + encodeURIComponent(s), { method: 'DELETE' });
+    state.watchlist = (state.watchlist || []).filter(w => w.symbol !== s);
+    const tr = $('wl').querySelector(`tr[data-sym="${esc(s)}"]`);
+    if (tr) tr.remove();
+    $('wl-count').textContent = `(${state.watchlist.length} symbols active)`;
+  } catch (err) {
+    alert('Failed to remove ' + s + ': ' + err.message);
+    btn.disabled = false;
+    btn.textContent = '✕';
+  }
+};
+
 $('wl').onchange = async e => {
-  const kzSym = e.target.dataset.kz;
-  if (kzSym) {
-    const v = e.target.value;
-    await api('/api/watchlist/' + kzSym, { method: 'PATCH', body: { killzone: v === '' ? null : v === '1' } });
-    load();
+  const kzSel = e.target.closest('select[data-kz]');
+  if (kzSel) {
+    const kzSym = kzSel.dataset.kz;
+    const v = kzSel.value;
+    kzSel.disabled = true;
+    try {
+      await api('/api/watchlist/' + encodeURIComponent(kzSym), {
+        method: 'PATCH',
+        body: { killzone: v === '' ? null : v === '1' }
+      });
+      const row = (state.watchlist || []).find(w => w.symbol === kzSym);
+      if (row) row.killzone = v === '' ? null : v === '1' ? 1 : 0;
+    } catch (err) {
+      alert('Failed to update killzone: ' + err.message);
+    } finally {
+      kzSel.disabled = false;
+    }
     return;
   }
-  const stratSym = e.target.dataset.strat;
-  if (stratSym) {
-    const v = e.target.value;
-    await api('/api/watchlist/' + stratSym, { method: 'PATCH', body: { strategy: v } });
-    load();
+
+  const stratSel = e.target.closest('select[data-strat]');
+  if (stratSel) {
+    const stratSym = stratSel.dataset.strat;
+    const v = stratSel.value;
+    stratSel.disabled = true;
+    try {
+      await api('/api/watchlist/' + encodeURIComponent(stratSym), {
+        method: 'PATCH',
+        body: { strategy: v }
+      });
+      const row = (state.watchlist || []).find(w => w.symbol === stratSym);
+      if (row) row.strategy = v;
+    } catch (err) {
+      alert('Failed to update strategy: ' + err.message);
+    } finally {
+      stratSel.disabled = false;
+    }
     return;
   }
 };

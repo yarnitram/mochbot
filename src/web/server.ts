@@ -244,7 +244,11 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
         return json(res, r.ok ? 200 : 400, r);
       }
       const m = path.match(/^\/api\/watchlist\/([A-Za-z0-9_\-]+)$/);
-      if (m && req.method === 'DELETE') return json(res, 200, runner.removeSymbol(m[1]));
+      if (m && req.method === 'DELETE') {
+        const out = runner.removeSymbol(m[1]);
+        push('state_full', snapshot());
+        return json(res, 200, out);
+      }
       if (m && req.method === 'PATCH') {
         const b = await readBody(req);
         const sym = runner.normalize(m[1]);
