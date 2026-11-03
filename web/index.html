@@ -207,6 +207,7 @@
             <option value="0">PINNED (Manual Coins)</option>
           </select>
           <button id="btn-reset-scanner" style="padding:4px 10px; font-size:11px; background:#0c4a6e; border-color:#0284c7; color:#38bdf8; border-radius:4px; cursor:pointer;" title="Re-evaluate all coins with current strategy settings">🔄 Reset Scanner</button>
+          <button id="btn-clear-watchlist" style="padding:4px 10px; font-size:11px; background:#450a0a; border:1px solid #ef4444; color:#f87171; border-radius:4px; cursor:pointer;" title="Remove all coins from watchlist">🗑️ Clear Watchlist</button>
         </div>
       </div>
       <div class="row" style="margin-bottom:12px;">
@@ -1403,7 +1404,29 @@ $('strategy-settings-btn').onclick = async () => {
   }
 };
 
-$('btn-reset-scanner').onclick = async () => {
+$('btn-clear-watchlist').onclick = async () => {
+    if (!confirm('Are you sure you want to clear all tokens from the watchlist? This will make the watchlist completely blank.')) return;
+    const btn = $('btn-clear-watchlist');
+    try {
+      btn.disabled = true;
+      btn.textContent = 'Clearing…';
+      await api('/api/watchlist/clear', { method: 'POST' });
+      state = await api('/api/state');
+      renderMeta();
+      renderWl();
+      btn.textContent = '✓ Cleared';
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = '🗑️ Clear Watchlist';
+      }, 1500);
+    } catch (err) {
+      alert('Failed to clear watchlist: ' + err.message);
+      btn.disabled = false;
+      btn.textContent = '🗑️ Clear Watchlist';
+    }
+  };
+
+  $('btn-reset-scanner').onclick = async () => {
   const btn = $('btn-reset-scanner');
   const orig = btn.innerHTML;
   btn.innerHTML = '⏳ Scanning MEXC...';

@@ -13,6 +13,24 @@ import { loadConfig } from '../src/config.js';
 import { longScenario } from './fixtures.js';
 
 describe('Auto-Scanner', () => {
+  it('defaults to blank watchlist (auto scanners off by default)', async () => {
+    const db = new Db(':memory:');
+    const runner = new Runner({
+      cfg: loadConfig({ PAPER_MODE: 'true' } as any),
+      db,
+      feed: { subscribe: () => {}, unsubscribe: () => {} },
+      fetchKlines: async () => [],
+      fetchContracts: async () => [],
+      fetchTopVolumePerps: async () => ['BTC_USDT', 'ETH_USDT'],
+      notifiers: [],
+      log: () => {},
+    });
+    await runner.start();
+    expect(db.listWatch().length).toBe(0);
+    expect(runner.anyScannerActive).toBe(false);
+  });
+
+
   it('parseTopVolumeTickers sorts by amount24 and filters USDT perps', () => {
     const raw = {
       success: true,
@@ -30,6 +48,7 @@ describe('Auto-Scanner', () => {
 
   it('filters alert policy: auto coins skip WATCH, but fire ARMED and ENTRY_READY', async () => {
     const db = new Db(':memory:');
+    db.setSetting('auto_scanner', '1');
     const { candles } = longScenario();
     const cfg = loadConfig({ PAPER_MODE: 'true', USE_KILLZONE: 'false', EVAL_THROTTLE_SEC: '0', LTF_MINUTES: '1' } as any);
     const sentStages: string[] = [];
@@ -163,6 +182,8 @@ describe('Auto-Scanner', () => {
 
   it('runAutoScan syncs both volume pairs (is_auto=1) and meme pairs (is_auto=2)', async () => {
     const db = new Db(':memory:');
+    db.setSetting('auto_scanner', '1');
+    db.setSetting('meme_scanner', '1');
     const cfg = loadConfig({ PAPER_MODE: 'true', USE_KILLZONE: 'false' } as any);
 
     const runner = new Runner({
@@ -191,6 +212,12 @@ describe('Auto-Scanner', () => {
 
   it('runAutoScan supports multi-sector tagging, leverage filtering, and deduplication', async () => {
     const db = new Db(':memory:');
+    db.setSetting('auto_scanner', '1');
+    db.setSetting('meme_scanner', '1');
+    db.setSetting('ai_scanner', '1');
+    db.setSetting('game_scanner', '1');
+    db.setSetting('gainers_scanner', '1');
+    db.setSetting('losers_scanner', '1');
     const cfg = loadConfig({ PAPER_MODE: 'true', USE_KILLZONE: 'false' } as any);
 
     const runner = new Runner({

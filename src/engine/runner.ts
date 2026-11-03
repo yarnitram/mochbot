@@ -81,12 +81,10 @@ export class Runner extends EventEmitter {
     return this.d.db.getSetting('mute') === '1';
   }
   get autoScannerEnabled(): boolean {
-    const v = this.d.db.getSetting('auto_scanner');
-    return v === null ? true : v === '1';
+    return this.d.db.getSetting('auto_scanner') === '1';
   }
   get memeScannerEnabled(): boolean {
-    const v = this.d.db.getSetting('meme_scanner');
-    return v === null ? true : v === '1';
+    return this.d.db.getSetting('meme_scanner') === '1';
   }
   get aiScannerEnabled(): boolean {
     return this.d.db.getSetting('ai_scanner') === '1';
@@ -373,6 +371,29 @@ export class Runner extends EventEmitter {
       return { ok: true, msg: `${symbol} added but backfill failed: ${(e as Error).message}`, symbol };
     }
     return { ok: true, msg: added ? `${symbol} added` : `${symbol} pinned to watchlist`, symbol };
+  }
+
+  clearWatchlist(): { cleared: number; msg: string } {
+    const list = this.d.db.listWatch();
+    for (const w of list) {
+      this.d.feed.unsubscribe(w.symbol);
+      this.store.drop(w.symbol);
+      this.htf1h.delete(w.symbol);
+      this.htf4h.delete(w.symbol);
+      this.states.delete(w.symbol);
+      this.emit('state', { symbol: w.symbol, removed: true });
+    }
+    const count = this.d.db.clearWatchlist();
+    this.setAutoScanner(false);
+    this.setMemeScanner(false);
+    this.setAiScanner(false);
+    this.setGameScanner(false);
+    this.setGainersScanner(false);
+    this.setLosersScanner(false);
+    this.setUltraLevScanner(false);
+    this.emit('watchlist_updated');
+    this.log(`cleared watchlist (${count} tokens removed)`);
+    return { cleared: count, msg: `Cleared ${count} tokens from watchlist` };
   }
 
   removeSymbol(raw: string): { ok: boolean; msg: string } {

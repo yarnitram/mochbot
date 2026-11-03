@@ -208,6 +208,11 @@ export class Db {
     return true;
   }
 
+  clearWatchlist(): number {
+    const r = this.db.prepare('DELETE FROM watchlist').run();
+    return Number(r.changes);
+  }
+
   removeWatch(symbol: string): boolean {
     const r = this.db.prepare('DELETE FROM watchlist WHERE symbol = ?').run(symbol);
     return r.changes > 0;
