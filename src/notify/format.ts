@@ -27,6 +27,16 @@ export function formatAlert(s: Setup): string {
   if (s.stage === 'ENTRY_READY') {
     lines.push(`Entry: ${p(s.entry)}`, `SL: ${p(s.sl)}`, `TP1 (1:3): ${p(s.tp1)}`, `TP2 (1:5): ${p(s.tp2)}`);
     if (s.orderType) lines.push(`Order: ${s.orderType.replace('_', '-')} - ${s.orderNote ?? ''}`);
+    if (s.sizing) {
+      const qtyStr = s.sizing.qtyCoins < 0.01 ? s.sizing.qtyCoins.toPrecision(3) : s.sizing.qtyCoins.toFixed(4);
+      lines.push(
+        `💼 Account: $${s.sizing.accountCapital.toFixed(0)} | Margin: $${s.sizing.margin.toFixed(2)} USDT`,
+        `⚡ Max Leverage: ${s.sizing.leverage}x | Pos: $${s.sizing.notional.toFixed(2)} (${qtyStr})`,
+        `🛑 Est. Risk (SL): -$${Math.abs(s.sizing.slRiskUsd).toFixed(2)} (-1.0R)`,
+        `🎯 Est. Gain (TP1): +$${s.sizing.tp1ProfitUsd.toFixed(2)} (+1.5R)`,
+        `🚀 Est. Gain (TP2): +$${s.sizing.tp2ProfitUsd.toFixed(2)} (+4.0R)`
+      );
+    }
   }
   lines.push(s.killzone ? 'Killzone: active' : 'Killzone: inactive');
   lines.push(mexcLink(s.symbol));

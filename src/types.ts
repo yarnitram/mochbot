@@ -73,6 +73,19 @@ export interface EntrySignal {
   inKillzone: boolean;
 }
 
+export interface PositionSizing {
+  accountCapital: number;
+  margin: number;
+  leverage: number;
+  notional: number;
+  qtyCoins: number;
+  qtyContracts: number;
+  slRiskUsd: number;
+  tp1ProfitUsd: number;
+  tp2ProfitUsd: number;
+  estLiqPrice: number;
+}
+
 export interface Setup {
   symbol: string;
   stage: Stage;
@@ -94,6 +107,7 @@ export interface Setup {
   killzone: boolean;
   atrHtf: number | null;
   atrLtf: number | null;
+  sizing?: PositionSizing | null;
   /** unix seconds of evaluation */
   ts: number;
 }

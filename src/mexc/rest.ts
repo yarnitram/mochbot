@@ -8,6 +8,9 @@ export interface ContractInfo {
   quoteCoin: string;
   priceUnit: number;
   state: number;
+  maxLeverage?: number;
+  contractSize?: number;
+  minVol?: number;
 }
 
 export interface TickerInfo {
@@ -41,7 +44,7 @@ export function parseContracts(json: any): ContractInfo[] {
   const arr = Array.isArray(json?.data) ? json.data : [];
   return arr
     .filter((c: any) => c && c.quoteCoin === 'USDT' && String(c.symbol).endsWith('_USDT') && c.state === 0)
-    .map((c: any) => ({ symbol: c.symbol, baseCoin: c.baseCoin, quoteCoin: c.quoteCoin, priceUnit: Number(c.priceUnit) || 0, state: c.state }));
+    .map((c: any) => ({ symbol: c.symbol, baseCoin: c.baseCoin, quoteCoin: c.quoteCoin, priceUnit: Number(c.priceUnit) || 0, state: c.state, maxLeverage: Number(c.maxLeverage) || 50, contractSize: Number(c.contractSize) || 1, minVol: Number(c.minVol) || 1 }));
 }
 
 export function parseTopVolumeTickers(json: any, limit = 50): string[] {

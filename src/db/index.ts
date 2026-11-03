@@ -38,6 +38,10 @@ export interface TradeRow {
   opened_at: number;
   closed_at: number | null;
   pnl_r: number | null;
+  pnl_usd: number | null;
+  margin: number;
+  leverage: number;
+  notional: number;
   setup_id: string | null;
   chart_file: string | null;
 }
@@ -49,6 +53,11 @@ export interface PerformanceSummary {
   losses: number;
   winRate: number;
   totalR: number;
+  totalPnlUsd: number;
+  accountCapital: number;
+  currentEquity: number;
+  returnPct: number;
+  defaultMargin: number;
 }
 
 export interface CoinStats {
@@ -60,6 +69,8 @@ export interface CoinStats {
   winRate: number;
   totalR: number;
   avgR: number;
+  totalPnlUsd: number;
+  avgPnlUsd: number;
   activeTrades: number;
   totalAlerts: number;
   lastActive: number;
@@ -112,6 +123,10 @@ export class Db {
         opened_at INTEGER NOT NULL,
         closed_at INTEGER,
         pnl_r REAL,
+        pnl_usd REAL,
+        margin REAL DEFAULT 1.0,
+        leverage REAL DEFAULT 50.0,
+        notional REAL DEFAULT 50.0,
         setup_id TEXT UNIQUE,
         chart_file TEXT
       );
@@ -125,6 +140,18 @@ export class Db {
     } catch {}
     try {
       this.db.exec(`ALTER TABLE trades ADD COLUMN chart_file TEXT;`);
+    } catch {}
+    try {
+      this.db.exec(`ALTER TABLE trades ADD COLUMN margin REAL DEFAULT 1.0;`);
+    } catch {}
+    try {
+      this.db.exec(`ALTER TABLE trades ADD COLUMN leverage REAL DEFAULT 50.0;`);
+    } catch {}
+    try {
+      this.db.exec(`ALTER TABLE trades ADD COLUMN notional REAL DEFAULT 50.0;`);
+    } catch {}
+    try {
+      this.db.exec(`ALTER TABLE trades ADD COLUMN pnl_usd REAL;`);
     } catch {}
   }
 
@@ -142,12 +169,13 @@ export class Db {
       }
       return false;
     }
-    const r = this.db.prepare('INSERT INTO watchlist(symbol, is_auto, added_at) VALUES (?, ?, ?)').run(symbol, isAuto ? 1 : 0, Math.floor(Date.now() / 1000));
-    return Number(r.changes) > 0;
+    this.db.prepare('INSERT INTO watchlist(symbol, is_auto, added_at) VALUES (?, ?, ?)').run(symbol, isAuto ? 1 : 0, Math.floor(Date.now() / 1000));
+    return true;
   }
 
   removeWatch(symbol: string): boolean {
-    return Number(this.db.prepare('DELETE FROM watchlist WHERE symbol = ?').run(symbol).changes) > 0;
+    const r = this.db.prepare('DELETE FROM watchlist WHERE symbol = ?').run(symbol);
+    return r.changes > 0;
   }
 
   removeAutoWatchesExcept(keepSymbols: Set<string>): string[] {
@@ -162,8 +190,22 @@ export class Db {
     return toRemove;
   }
 
-  updateWatch(symbol: string, patch: { killzone?: boolean | null; sensitivity?: string | null; watch_distance?: number | null }): boolean {
-    const cur = this.db.prepare('SELECT * FROM watchlist WHERE symbol = ?').get(symbol) as unknown as WatchRow | undefined;
+  pruneAutoWatch(activeSymbols: string[]): number {
+    if (activeSymbols.length === 0) return 0;
+    const placeholders = activeSymbols.map(() => '?').join(',');
+    const r = this.db.prepare(`DELETE FROM watchlist WHERE is_auto = 1 AND symbol NOT IN (${placeholders})`).run(...activeSymbols);
+    return Number(r.changes);
+  }
+
+  updateWatch(
+    symbol: string,
+    patch: {
+      killzone?: boolean | null;
+      sensitivity?: string | null;
+      watch_distance?: number | null;
+    }
+  ): boolean {
+    const cur = this.db.prepare('SELECT * FROM watchlist WHERE symbol = ?').get(symbol) as WatchRow | undefined;
     if (!cur) return false;
     const kz = patch.killzone === undefined ? cur.killzone : patch.killzone === null ? null : patch.killzone ? 1 : 0;
     const sens = patch.sensitivity === undefined ? cur.sensitivity : patch.sensitivity;
@@ -181,6 +223,26 @@ export class Db {
     this.db.prepare('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key, value);
   }
 
+  getAccountCapital(): number {
+    const v = this.getSetting('account_capital');
+    const n = v ? Number(v) : 1000;
+    return Number.isFinite(n) && n > 0 ? n : 1000;
+  }
+
+  setAccountCapital(val: number): void {
+    this.setSetting('account_capital', String(Math.max(1, val)));
+  }
+
+  getDefaultMargin(): number {
+    const v = this.getSetting('default_margin');
+    const n = v ? Number(v) : 1;
+    return Number.isFinite(n) && n > 0 ? n : 1;
+  }
+
+  setDefaultMargin(val: number): void {
+    this.setSetting('default_margin', String(Math.max(0.1, val)));
+  }
+
   // ---------- Alerts ----------
   insertAlert(setup: Setup, delivered: boolean): number {
     const r = this.db
@@ -188,12 +250,15 @@ export class Db {
       .run(Math.floor(Date.now() / 1000), setup.symbol, setup.stage, setup.direction, setup.setupId, delivered ? 1 : 0, JSON.stringify(setup));
     return Number(r.lastInsertRowid);
   }
+
   markDelivered(id: number) {
     this.db.prepare('UPDATE alerts SET delivered = 1 WHERE id = ?').run(id);
   }
+
   recentAlerts(limit = 100): AlertRow[] {
     return this.db.prepare('SELECT * FROM alerts ORDER BY id DESC LIMIT ?').all(limit) as unknown as AlertRow[];
   }
+
   alertsSince(tsSec: number): AlertRow[] {
     return this.db.prepare('SELECT * FROM alerts WHERE ts >= ? ORDER BY id').all(tsSec) as unknown as AlertRow[];
   }
@@ -209,12 +274,31 @@ export class Db {
     setup_id?: string | null;
     chart_file?: string | null;
     opened_at?: number;
+    margin?: number;
+    leverage?: number;
+    notional?: number;
   }): number {
     const now = trade.opened_at ?? Math.floor(Date.now() / 1000);
+    const margin = trade.margin ?? this.getDefaultMargin();
+    const leverage = trade.leverage ?? 50;
+    const notional = trade.notional ?? (margin * leverage);
     const r = this.db
-      .prepare(`INSERT INTO trades (symbol, direction, entry_price, sl_price, tp1_price, tp2_price, status, opened_at, setup_id, chart_file)
-                VALUES (?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?)`)
-      .run(trade.symbol, trade.direction, trade.entry_price, trade.sl_price, trade.tp1_price, trade.tp2_price, now, trade.setup_id ?? null, trade.chart_file ?? null);
+      .prepare(`INSERT INTO trades (symbol, direction, entry_price, sl_price, tp1_price, tp2_price, status, opened_at, setup_id, chart_file, margin, leverage, notional)
+                VALUES (?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?, ?, ?, ?)`)
+      .run(
+        trade.symbol,
+        trade.direction,
+        trade.entry_price,
+        trade.sl_price,
+        trade.tp1_price,
+        trade.tp2_price,
+        now,
+        trade.setup_id ?? null,
+        trade.chart_file ?? null,
+        margin,
+        leverage,
+        notional
+      );
     return Number(r.lastInsertRowid);
   }
 
@@ -222,10 +306,14 @@ export class Db {
     this.db.prepare('UPDATE trades SET chart_file = ? WHERE id = ?').run(chartFile, id);
   }
 
-  updateTradeStatus(id: number, status: TradeStatus, pnlR?: number, closedAt?: number): void {
+  updateTradeStatus(id: number, status: TradeStatus, pnlR?: number, closedAt?: number, pnlUsd?: number): void {
     const closed = closedAt ?? Math.floor(Date.now() / 1000);
     if (pnlR !== undefined) {
-      this.db.prepare('UPDATE trades SET status = ?, pnl_r = ?, closed_at = ? WHERE id = ?').run(status, pnlR, closed, id);
+      if (pnlUsd !== undefined) {
+        this.db.prepare('UPDATE trades SET status = ?, pnl_r = ?, pnl_usd = ?, closed_at = ? WHERE id = ?').run(status, pnlR, pnlUsd, closed, id);
+      } else {
+        this.db.prepare('UPDATE trades SET status = ?, pnl_r = ?, closed_at = ? WHERE id = ?').run(status, pnlR, closed, id);
+      }
     } else {
       this.db.prepare('UPDATE trades SET status = ? WHERE id = ?').run(status, id);
     }
@@ -244,11 +332,12 @@ export class Db {
   }
 
   getPerformanceSummary(): PerformanceSummary {
-    const rows = this.db.prepare('SELECT status, pnl_r FROM trades').all() as unknown as { status: TradeStatus; pnl_r: number | null }[];
+    const rows = this.db.prepare('SELECT status, pnl_r, pnl_usd FROM trades').all() as unknown as { status: TradeStatus; pnl_r: number | null; pnl_usd: number | null }[];
     let openTrades = 0;
     let wins = 0;
     let losses = 0;
     let totalR = 0;
+    let totalPnlUsd = 0;
 
     for (const r of rows) {
       if (r.status === 'OPEN' || r.status === 'TP1_HIT') {
@@ -256,6 +345,7 @@ export class Db {
       } else {
         const pnl = r.pnl_r ?? 0;
         totalR += pnl;
+        totalPnlUsd += r.pnl_usd ?? 0;
         if (pnl > 0) wins++;
         else losses++;
       }
@@ -263,6 +353,10 @@ export class Db {
 
     const totalClosed = wins + losses;
     const winRate = totalClosed > 0 ? (wins / totalClosed) * 100 : 0;
+    const accountCapital = this.getAccountCapital();
+    const defaultMargin = this.getDefaultMargin();
+    const currentEquity = accountCapital + totalPnlUsd;
+    const returnPct = accountCapital > 0 ? (totalPnlUsd / accountCapital) * 100 : 0;
 
     return {
       totalTrades: rows.length,
@@ -271,6 +365,11 @@ export class Db {
       losses,
       winRate: Number(winRate.toFixed(1)),
       totalR: Number(totalR.toFixed(2)),
+      totalPnlUsd: Number(totalPnlUsd.toFixed(2)),
+      accountCapital,
+      currentEquity: Number(currentEquity.toFixed(2)),
+      returnPct: Number(returnPct.toFixed(2)),
+      defaultMargin,
     };
   }
 
@@ -296,9 +395,10 @@ export class Db {
     const out: CoinStats[] = [];
 
     for (const { symbol } of symRows) {
-      const trades = this.db.prepare('SELECT status, pnl_r, opened_at FROM trades WHERE symbol = ?').all(symbol) as unknown as {
+      const trades = this.db.prepare('SELECT status, pnl_r, pnl_usd, opened_at FROM trades WHERE symbol = ?').all(symbol) as unknown as {
         status: TradeStatus;
         pnl_r: number | null;
+        pnl_usd: number | null;
         opened_at: number;
       }[];
 
@@ -310,6 +410,7 @@ export class Db {
       let wins = 0;
       let losses = 0;
       let totalR = 0;
+      let totalPnlUsd = 0;
       let activeTrades = 0;
       let maxTradeTs = 0;
 
@@ -320,6 +421,7 @@ export class Db {
         } else {
           const pnl = t.pnl_r ?? 0;
           totalR += pnl;
+          totalPnlUsd += t.pnl_usd ?? 0;
           if (pnl > 0) wins++;
           else losses++;
         }
@@ -328,6 +430,7 @@ export class Db {
       const closedTrades = wins + losses;
       const winRate = closedTrades > 0 ? (wins / closedTrades) * 100 : 0;
       const avgR = closedTrades > 0 ? totalR / closedTrades : 0;
+      const avgPnlUsd = closedTrades > 0 ? totalPnlUsd / closedTrades : 0;
       const lastActive = Math.max(maxTradeTs, alertStats?.maxTs ?? 0);
       const isWatching = watchMap.has(symbol);
       const isAuto = watchMap.get(symbol)?.is_auto === 1;
@@ -341,6 +444,8 @@ export class Db {
         winRate: Number(winRate.toFixed(1)),
         totalR: Number(totalR.toFixed(2)),
         avgR: Number(avgR.toFixed(2)),
+        totalPnlUsd: Number(totalPnlUsd.toFixed(2)),
+        avgPnlUsd: Number(avgPnlUsd.toFixed(2)),
         activeTrades,
         totalAlerts: alertStats?.c ?? 0,
         lastActive,

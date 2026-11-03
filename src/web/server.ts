@@ -68,10 +68,14 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
       const isLong = t.direction === 'LONG';
       const risk = Math.abs(t.entry_price - t.sl_price) || 1;
       const currentR = isLong ? (currentPrice - t.entry_price) / risk : (t.entry_price - currentPrice) / risk;
+      const notional = t.notional ?? ((t.margin ?? 1) * (t.leverage ?? 50));
+      const slDistPct = risk / Math.max(1e-8, t.entry_price);
+      const currentPnlUsd = currentR * (notional * slDistPct);
       return {
         ...t,
         currentPrice,
         currentR: Number(currentR.toFixed(2)),
+        currentPnlUsd: Number(currentPnlUsd.toFixed(2)),
         chartUrl: t.chart_file ? `/api/charts/${t.chart_file}` : null,
       };
     }),
@@ -182,6 +186,9 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
         if (typeof b.killzone === 'boolean') runner.setKillzone(b.killzone);
         if (typeof b.muted === 'boolean') runner.setMuted(b.muted);
         if (typeof b.auto_scanner === 'boolean') runner.setAutoScanner(b.auto_scanner);
+        if (typeof b.account_capital === 'number' && b.account_capital > 0) db.setAccountCapital(b.account_capital);
+        if (typeof b.default_margin === 'number' && b.default_margin > 0) db.setDefaultMargin(b.default_margin);
+        push('state_full', snapshot());
         return json(res, 200, snapshot());
       }
       if (path === '/api/events') {
