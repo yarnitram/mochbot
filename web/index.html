@@ -753,7 +753,8 @@ function renderTrades() {
     const notionalVal = (t.notional ?? ((t.margin ?? 1) * (t.leverage ?? 50))).toFixed(0);
     const tr = document.createElement('tr');
     const stratBadge = `<span class="badge" style="background:#21262d; border:1px solid #30363d; font-size:10px;">${t.strategy_id || 'MOD-01'}</span>`;
-    tr.innerHTML = `<td><a class="coin-link" onclick="openJournal('${esc(t.symbol)}')"><b>${esc(t.symbol)}</b></a></td>
+    const mexcUrl = `https://www.mexc.co/en-PH/futures/${encodeURIComponent(t.symbol)}?type=linear_swap`;
+    tr.innerHTML = `<td><div style="display:inline-flex; align-items:center; gap:6px;"><a class="coin-link" onclick="openJournal('${esc(t.symbol)}')"><b>${esc(t.symbol)}</b></a><a href="${mexcUrl}" target="_blank" class="coin-link" title="Open ${esc(t.symbol)} on MEXC" style="font-size:11px; opacity:0.85; text-decoration:none;">📈 MEXC ↗</a></div></td>
       <td>${stratBadge}</td>
       <td class="${t.direction === 'LONG' ? 'long' : 'short'}">${t.direction}</td>
       <td>${fmt(t.entry_price)}</td>
