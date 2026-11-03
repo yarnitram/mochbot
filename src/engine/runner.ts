@@ -1,4 +1,6 @@
 import { EventEmitter } from 'node:events';
+import { writeFileSync, mkdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import type { AppConfig } from '../config.js';
 import type { Db } from '../db/index.js';
 import { CandleStore } from '../data/candleStore.js';
@@ -24,6 +26,7 @@ export interface RunnerDeps {
   fetchKlines: (symbol: string, bars: number) => Promise<Candle[]>;
   fetchContracts: () => Promise<ContractInfo[]>;
   fetchTopVolumePerps?: (limit: number) => Promise<string[]>;
+  chartsDir?: string;
   notifiers: Notifier[];
   log?: (msg: string) => void;
 }
@@ -34,6 +37,7 @@ export class Runner extends EventEmitter {
   readonly gate = new AlertGate();
   readonly states = new Map<string, Setup>();
   readonly lifecycle: LifecycleManager;
+  readonly chartsDir: string;
   contracts: ContractInfo[] = [];
   private lastEval = new Map<string, number>();
   private log: (msg: string) => void;
@@ -44,6 +48,12 @@ export class Runner extends EventEmitter {
     this.store = new CandleStore(d.cfg.historyBars);
     this.lifecycle = new LifecycleManager(d.db);
     this.log = d.log ?? (m => console.log(m));
+    this.chartsDir = d.chartsDir ?? (d.cfg.dbPath === ':memory:' ? '' : join(dirname(d.cfg.dbPath), 'charts'));
+    if (this.chartsDir) {
+      try {
+        mkdirSync(this.chartsDir, { recursive: true });
+      } catch {}
+    }
   }
 
   // ---------- settings ----------
@@ -233,26 +243,32 @@ export class Runner extends EventEmitter {
     const id = this.d.db.insertAlert(setup, false);
     this.emit('alert', { id, setup });
 
-    // Automatically register open trade upon ENTRY_READY
-    if (setup.stage === 'ENTRY_READY') {
-      this.lifecycle.onEntryReady(setup);
-    }
-
-    if (this.d.cfg.paperMode) {
-      this.log(`[paper] ${setup.symbol} ${setup.stage} ${setup.direction}`);
-      return;
-    }
-
     // Generate dual-view chart PNG buffer only for ENTRY_READY
     let chartBuffer: Buffer | null = null;
+    let chartFile: string | null = null;
     if (setup.stage === 'ENTRY_READY') {
       try {
         const ltf = this.store.closed(setup.symbol);
         const htf = aggregate(ltf, this.strategyCfg(setup.symbol).htfMinutes);
         chartBuffer = renderChartPng(setup.symbol, htf, ltf, setup);
+
+        // Save chart to persistent disk folder
+        if (chartBuffer && this.chartsDir) {
+          const safeId = (setup.setupId || 'entry').replace(/[^a-zA-Z0-9_\-]/g, '_');
+          chartFile = `${setup.symbol}_${safeId}_${Date.now()}.png`;
+          writeFileSync(join(this.chartsDir, chartFile), chartBuffer);
+        }
       } catch (e) {
         this.log(`chart render failed for ${setup.symbol}: ${(e as Error).message}`);
       }
+
+      // Automatically register open trade upon ENTRY_READY
+      this.lifecycle.onEntryReady(setup, chartFile);
+    }
+
+    if (this.d.cfg.paperMode) {
+      this.log(`[paper] ${setup.symbol} ${setup.stage} ${setup.direction}`);
+      return;
     }
 
     const results = await Promise.allSettled(this.d.notifiers.map(n => n.send(setup, chartBuffer)));
@@ -274,7 +290,6 @@ export class Runner extends EventEmitter {
         if ('sendText' in n && typeof (n as any).sendText === 'function') {
           await (n as any).sendText(m.message);
         } else {
-          // Fallback to minimal setup-like alert
           await n.send({
             symbol: m.trade.symbol,
             stage: 'ENTRY_READY',
