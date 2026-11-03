@@ -18,6 +18,7 @@ export interface AppConfig {
   discordWebhook: string | null;
   accountCapital: number;
   defaultMargin: number;
+  riskPerTrade: number;
   strategy: StrategyCfg;
   /** how many closed 1m candles to keep per symbol */
   historyBars: number;
@@ -47,6 +48,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     discordWebhook: env.DISCORD_WEBHOOK_URL || null,
     accountCapital: num(env.ACCOUNT_CAPITAL, 1000),
     defaultMargin: num(env.DEFAULT_MARGIN, 1),
+    riskPerTrade: num(env.RISK_PER_TRADE, 5),
     historyBars: num(env.HISTORY_BARS, 1500),
     evalThrottleSec: num(env.EVAL_THROTTLE_SEC, 2),
     strategy: {

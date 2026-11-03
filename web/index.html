@@ -117,7 +117,7 @@
         <h2 style="margin:0;">Account &amp; Performance (Phantom SMC MOD-01)</h2>
         <div class="row">
           <button id="strategy-settings-btn" style="padding:4px 10px; font-size:11px; background:#1f2937; border-color:#374151;">⚙️ Strategies</button>
-          <button id="account-settings-btn" style="padding:4px 10px; font-size:11px;">⚙️ Capital &amp; Margin</button>
+          <button id="account-settings-btn" style="padding:4px 10px; font-size:11px;">⚙️ Capital &amp; Risk</button>
           <button id="mochex-sync-btn" style="padding:4px 10px; font-size:11px; background:#4c1d95; border-color:#7c3aed; color:#c4b5fd;">🔗 MOCHEX Sync</button>
         </div>
       </div>
@@ -133,9 +133,9 @@
           <small id="stat-pnl-r" class="mut" style="font-size:11px;">+0.00 R (0 closed)</small>
         </div>
         <div class="stat-box">
-          <small class="mut">Default Margin</small>
-          <div id="stat-margin-lev" class="stat-val" style="font-size:18px;">$1.00 USDT</div>
-          <small class="mut" style="font-size:11px;">Max Leverage per coin</small>
+          <small class="mut">Risk Per Trade</small>
+          <div id="stat-margin-lev" class="stat-val" style="font-size:18px;">$5.00 USDT</div>
+          <small id="stat-margin-sub" class="mut" style="font-size:11px;">Auto Margin · Max Lev</small>
         </div>
         <div class="stat-box">
           <small class="mut">Win Rate</small>
@@ -156,9 +156,9 @@
             <th>Dir</th>
             <th>Entry</th>
             <th>Price</th>
-            <th>Live P&amp;L ($)</th>
+            <th>Live P&amp;L</th>
             <th>Live R</th>
-            <th>Margin / Lev</th>
+            <th>Auto Margin / Lev</th>
             <th>SL (BE)</th>
             <th>TP1 (1:3)</th>
             <th>TP2 (1:5)</th>
@@ -426,18 +426,18 @@
 
 <!-- Account & Sizing Settings Modal -->
 <div id="account-modal" class="modal" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
-  <div class="card" style="max-width:380px; width:90%; padding:20px; background:#161b22; border:1px solid #30363d; border-radius:8px;" onclick="event.stopPropagation()">
-    <h3 style="margin-top:0; font-size:16px;">⚙️ Capital &amp; Margin Settings</h3>
-    <div style="margin-bottom:12px;">
+  <div class="card" style="max-width:400px; width:90%; padding:20px; background:#161b22; border:1px solid #30363d; border-radius:8px;" onclick="event.stopPropagation()">
+    <h3 style="margin-top:0; font-size:16px;">⚙️ Capital &amp; Risk Settings</h3>
+    <div style="margin-bottom:14px;">
       <label style="display:block; font-size:12px; margin-bottom:4px;" class="mut">Account Starting Capital (USDT)</label>
       <input id="input-capital" type="number" min="1" step="1" style="width:100%; padding:6px 8px;">
     </div>
     <div style="margin-bottom:16px;">
-      <label style="display:block; font-size:12px; margin-bottom:4px;" class="mut">Default Margin per Trade (USDT)</label>
-      <input id="input-margin" type="number" min="0.1" step="0.5" style="width:100%; padding:6px 8px;">
-      <small class="mut" style="display:block; margin-top:4px;">Position Value = Margin × Max Leverage of coin</small>
+      <label style="display:block; font-size:12px; margin-bottom:4px;" class="mut">Risk Per Trade (USDT)</label>
+      <input id="input-risk" type="number" min="0.1" step="0.5" style="width:100%; padding:6px 8px;">
+      <small class="mut" style="display:block; margin-top:4px; line-height:1.4;">Margin is automatically computed per coin so that reaching Stop Loss risks exactly this dollar amount at max leverage (-1.0R = -$5.00).</small>
     </div>
-    <div class="row" style="justify-content:flex-end;">
+    <div class="row" style="justify-content:flex-end; gap:8px;">
       <button onclick="$('account-modal').style.display='none'" style="background:#21262d; border-color:#30363d;">Cancel</button>
       <button id="save-account-btn" style="background:#238636; border-color:#2ea043; color:white;">Save Settings</button>
     </div>
@@ -683,7 +683,9 @@ function renderTrades() {
   $('trades-empty').style.display = trades.length > 0 ? 'none' : 'block';
   for (const t of trades) {
     const rClass = (t.currentR || 0) >= 0 ? 'long' : 'short';
-    const pnlClass = (t.currentPnlUsd || 0) >= 0 ? 'long' : 'short';
+    const pnlUsd = t.currentPnlUsd || 0;
+    const pnlPct = t.currentPnlPct || 0;
+    const pnlClass = pnlUsd >= 0 ? 'long' : 'short';
     const chartLink = t.chartUrl ? `<a href="${t.chartUrl}" target="_blank" class="coin-link">🖼️ Chart</a>` : '-';
     const marginVal = (t.margin ?? 1).toFixed(2);
     const levVal = t.leverage ?? 50;
@@ -695,7 +697,10 @@ function renderTrades() {
       <td class="${t.direction === 'LONG' ? 'long' : 'short'}">${t.direction}</td>
       <td>${fmt(t.entry_price)}</td>
       <td>${fmt(t.currentPrice)}</td>
-      <td class="${pnlClass}"><b>${(t.currentPnlUsd || 0) > 0 ? '+' : ''}$${(t.currentPnlUsd || 0).toFixed(2)}</b></td>
+      <td class="${pnlClass}">
+        <b>${pnlUsd > 0 ? '+' : ''}$${pnlUsd.toFixed(2)}</b>
+        <span style="font-size:11px; margin-left:4px; font-weight:600;">(${pnlPct > 0 ? '+' : ''}${pnlPct.toFixed(2)}%)</span>
+      </td>
       <td class="${rClass}">${t.currentR > 0 ? '+' : ''}${t.currentR} R</td>
       <td>$${marginVal} · ${levVal}x <small class="mut">($${notionalVal})</small></td>
       <td>${fmt(t.sl_price)}</td>
@@ -723,7 +728,8 @@ function renderPerformance() {
   $('stat-pnl-usd').className = 'stat-val ' + (pnlUsd >= 0 ? 'pos' : 'neg');
   $('stat-pnl-r').textContent = `${(p.totalR || 0) > 0 ? '+' : ''}${(p.totalR || 0).toFixed(2)} R (${(p.wins ?? 0) + (p.losses ?? 0)} closed)`;
 
-  $('stat-margin-lev').textContent = `$${margin.toFixed(2)} USDT`;
+  const risk = p.riskPerTrade ?? 5;
+  $('stat-margin-lev').textContent = `$${risk.toFixed(2)} USDT`;
   $('stat-wr').textContent = `${p.winRate ?? 0}%`;
   $('stat-record').textContent = `${p.wins ?? 0} W / ${p.losses ?? 0} L`;
 }
@@ -876,7 +882,9 @@ async function openJournal(symbol, navigate = true) {
   // 2. Trade Execution History Table
   $('journal-trades-empty').style.display = data.trades.length > 0 ? 'none' : 'block';
   $('journal-trades-tbody').innerHTML = data.trades.map(t => {
-    const pnlUsd = t.pnl_usd != null ? `<b class="${t.pnl_usd >= 0 ? 'long' : 'short'}">${t.pnl_usd > 0 ? '+' : ''}$${t.pnl_usd.toFixed(2)}</b>` : '-';
+    const margin = t.margin || 1;
+    const pnlPct = t.pnl_usd != null ? ((t.pnl_usd / margin) * 100).toFixed(1) : null;
+    const pnlUsd = t.pnl_usd != null ? `<b class="${t.pnl_usd >= 0 ? 'long' : 'short'}">${t.pnl_usd > 0 ? '+' : ''}$${t.pnl_usd.toFixed(2)} <small style="font-weight:normal;">(${t.pnl_usd > 0 ? '+' : ''}${pnlPct}%)</small></b>` : '-';
     const pnlR = t.pnl_r != null ? `<b class="${t.pnl_r >= 0 ? 'long' : 'short'}">${t.pnl_r > 0 ? '+' : ''}${t.pnl_r} R</b>` : '-';
     const marginVal = (t.margin ?? 1).toFixed(2);
     const levVal = t.leverage ?? 50;
@@ -1025,18 +1033,18 @@ if ($('filter-strat')) $('filter-strat').onchange = loadAnalytics;
 $('account-settings-btn').onclick = () => {
   const p = state.performance || {};
   $('input-capital').value = p.accountCapital ?? 1000;
-  $('input-margin').value = p.defaultMargin ?? 1;
+  $('input-risk').value = p.riskPerTrade ?? 5;
   $('account-modal').style.display = 'flex';
 };
 
 $('save-account-btn').onclick = async () => {
   const capital = parseFloat($('input-capital').value);
-  const margin = parseFloat($('input-margin').value);
-  if (isNaN(capital) || capital <= 0 || isNaN(margin) || margin <= 0) {
+  const risk = parseFloat($('input-risk').value);
+  if (isNaN(capital) || capital <= 0 || isNaN(risk) || risk <= 0) {
     alert('Please enter valid positive values.');
     return;
   }
-  state = await api('/api/settings', { method: 'POST', body: { account_capital: capital, default_margin: margin } });
+  state = await api('/api/settings', { method: 'POST', body: { account_capital: capital, risk_per_trade: risk } });
   renderPerformance();
   renderTrades();
   $('account-modal').style.display = 'none';

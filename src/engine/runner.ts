@@ -332,10 +332,10 @@ export class Runner extends EventEmitter {
     if (setup.stage === 'ENTRY_READY' && setup.entry && setup.sl && setup.tp1 && setup.tp2 && setup.direction) {
       const contract = this.contracts.find(c => c.symbol === symbol);
       const capital = this.d.db.getAccountCapital();
-      const margin = this.d.db.getDefaultMargin();
+      const riskPerTrade = this.d.db.getRiskPerTrade();
       const maxLev = contract?.maxLeverage ?? 50;
       const cSize = contract?.contractSize ?? 1;
-      setup.sizing = computePositionSizing(setup.entry, setup.sl, setup.tp1, setup.tp2, setup.direction, capital, margin, maxLev, cSize);
+      setup.sizing = computePositionSizing(setup.entry, setup.sl, setup.tp1, setup.tp2, setup.direction, capital, riskPerTrade, maxLev, cSize);
     }
     const prev = this.states.get(symbol);
     this.states.set(symbol, setup);

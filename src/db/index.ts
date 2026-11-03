@@ -63,6 +63,7 @@ export interface PerformanceSummary {
   currentEquity: number;
   returnPct: number;
   defaultMargin: number;
+  riskPerTrade: number;
 }
 
 export interface CoinStats {
@@ -269,6 +270,19 @@ export class Db {
     this.setSetting('account_capital', String(Math.max(1, val)));
   }
 
+  getRiskPerTrade(): number {
+    const v = this.getSetting('risk_per_trade');
+    if (v) {
+      const n = Number(v);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    return 5.0;
+  }
+
+  setRiskPerTrade(val: number): void {
+    this.setSetting('risk_per_trade', String(Math.max(0.1, val)));
+  }
+
   getDefaultMargin(): number {
     const v = this.getSetting('default_margin');
     const n = v ? Number(v) : 1;
@@ -429,6 +443,7 @@ export class Db {
     const winRate = totalClosed > 0 ? (wins / totalClosed) * 100 : 0;
     const accountCapital = this.getAccountCapital();
     const defaultMargin = this.getDefaultMargin();
+    const riskPerTrade = this.getRiskPerTrade();
     const currentEquity = accountCapital + totalPnlUsd;
     const returnPct = accountCapital > 0 ? (totalPnlUsd / accountCapital) * 100 : 0;
 
@@ -444,6 +459,7 @@ export class Db {
       currentEquity: Number(currentEquity.toFixed(2)),
       returnPct: Number(returnPct.toFixed(2)),
       defaultMargin,
+      riskPerTrade,
     };
   }
 

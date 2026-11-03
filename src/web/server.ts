@@ -90,11 +90,14 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
       const notional = t.notional ?? ((t.margin ?? 1) * (t.leverage ?? 50));
       const slDistPct = risk / Math.max(1e-8, t.entry_price);
       const currentPnlUsd = currentR * (notional * slDistPct);
+      const margin = t.margin || (notional / (t.leverage || 50)) || 1;
+      const currentPnlPct = (currentPnlUsd / Math.max(0.01, margin)) * 100;
       return {
         ...t,
         currentPrice,
         currentR: Number(currentR.toFixed(2)),
         currentPnlUsd: Number(currentPnlUsd.toFixed(2)),
+        currentPnlPct: Number(currentPnlPct.toFixed(2)),
         chartUrl: t.chart_file ? `/api/charts/${t.chart_file}` : null,
       };
     }),
@@ -312,6 +315,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
         if (b.global_strategy && (b.global_strategy === 'MOD-01' || b.global_strategy === 'MOD-01D')) db.setGlobalStrategy(b.global_strategy);
         if (typeof b.account_capital === 'number' && b.account_capital > 0) db.setAccountCapital(b.account_capital);
         if (typeof b.default_margin === 'number' && b.default_margin > 0) db.setDefaultMargin(b.default_margin);
+        if (typeof b.risk_per_trade === 'number' && b.risk_per_trade > 0) db.setRiskPerTrade(b.risk_per_trade);
         push('state_full', snapshot());
         return json(res, 200, snapshot());
       }

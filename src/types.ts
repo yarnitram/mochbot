@@ -122,6 +122,7 @@ export interface EntrySignal {
 
 export interface PositionSizing {
   accountCapital: number;
+  riskPerTrade: number;
   margin: number;
   leverage: number;
   notional: number;
