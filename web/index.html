@@ -172,10 +172,13 @@
 
     <!-- Watchlist Card -->
     <div class="card" style="margin-bottom:20px;">
-      <h2>
-        <span>Watchlist &amp; Scanner Feed</span>
-        <small id="wl-count" class="mut"></small>
-      </h2>
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
+        <h2 style="margin:0;">
+          <span>Watchlist &amp; Scanner Feed</span>
+          <small id="wl-count" class="mut"></small>
+        </h2>
+        <button id="btn-reset-scanner" style="padding:4px 10px; font-size:11px; background:#0c4a6e; border-color:#0284c7; color:#38bdf8; border-radius:4px; cursor:pointer;" title="Re-evaluate all coins with current strategy settings">🔄 Reset Scanner</button>
+      </div>
       <div class="row" style="margin-bottom:12px;">
         <div class="sugg"><input id="q" placeholder="Pin coin (e.g. BTC)" autocomplete="off"><div id="sugg" hidden></div></div>
         <button id="add">Pin to Watchlist</button><span id="msg" class="mut"></span>
@@ -347,8 +350,8 @@
         <div>
           <label style="display:block; font-size:11px;" class="mut">LTF Execution Timeframe</label>
           <select id="input-mod01-ltf" style="width:100%; padding:5px 7px;">
-            <option value="1">1m (Scalp Default)</option>
-            <option value="3">3m (Recommended for Crypto / Memes)</option>
+            <option value="1">1m (Scalp Fast)</option>
+            <option value="3" selected>3m (Recommended Default)</option>
             <option value="5">5m (Conservative)</option>
           </select>
         </div>
@@ -880,7 +883,7 @@ $('strategy-settings-btn').onclick = async () => {
 
     const mod01 = data.strategies.find(s => s.id === 'MOD-01')?.config || {};
     $('input-mod01-htf').value = mod01.htfMinutes ?? 15;
-    $('input-mod01-ltf').value = mod01.ltfMinutes ?? 1;
+    $('input-mod01-ltf').value = mod01.ltfMinutes ?? 3;
     $('input-mod01-search').value = mod01.poiSearchBars ?? 40;
     $('input-mod01-swing').value = mod01.swingLookback ?? 5;
     $('input-mod01-maxage').value = mod01.maxAgeBars ?? 20;
@@ -904,12 +907,27 @@ $('strategy-settings-btn').onclick = async () => {
   }
 };
 
+$('btn-reset-scanner').onclick = async () => {
+  const btn = $('btn-reset-scanner');
+  const orig = btn.innerHTML;
+  btn.innerHTML = '🔄 Re-evaluating...';
+  btn.disabled = true;
+  try {
+    const res = await api('/api/scanner/reset', { method: 'POST' });
+    btn.innerHTML = '✓ Re-evaluated (' + (res.reevaluated || 0) + ' coins)';
+    setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 2000);
+  } catch (err) {
+    btn.innerHTML = '❌ Failed';
+    setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 2000);
+  }
+};
+
 $('save-strategies-btn').onclick = async () => {
   try {
     const globalStrat = $('input-global-strategy').value;
     const mod01Cfg = {
       htfMinutes: parseInt($('input-mod01-htf').value) || 15,
-      ltfMinutes: parseInt($('input-mod01-ltf').value) || 1,
+      ltfMinutes: parseInt($('input-mod01-ltf').value) || 3,
       poiSearchBars: parseInt($('input-mod01-search').value) || 40,
       swingLookback: parseInt($('input-mod01-swing').value) || 5,
       maxAgeBars: parseInt($('input-mod01-maxage').value) || 20,

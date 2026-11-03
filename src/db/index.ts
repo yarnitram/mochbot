@@ -170,6 +170,16 @@ export class Db {
     try {
       this.db.exec(`ALTER TABLE trades ADD COLUMN strategy_id TEXT NOT NULL DEFAULT 'MOD-01';`);
     } catch {}
+    try {
+      const rawMod01 = this.getSetting('strategy_cfg_mod01');
+      if (rawMod01) {
+        const parsed = JSON.parse(rawMod01);
+        if (parsed.ltfMinutes === 1) {
+          parsed.ltfMinutes = 3;
+          this.setSetting('strategy_cfg_mod01', JSON.stringify(parsed));
+        }
+      }
+    } catch {}
   }
 
   // ---------- Watchlist ----------

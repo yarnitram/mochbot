@@ -43,6 +43,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     evalThrottleSec: num(env.EVAL_THROTTLE_SEC, 2),
     strategy: {
       ...DEFAULT_CFG,
+      ltfMinutes: num(env.LTF_MINUTES, 3),
       sensitivity: sens === 'strict' || sens === 'sensitive' ? sens : 'balanced',
       useKillzone: bool(env.USE_KILLZONE, DEFAULT_CFG.useKillzone),
       watchDistanceAtr: num(env.WATCH_DISTANCE_ATR, DEFAULT_CFG.watchDistanceAtr),

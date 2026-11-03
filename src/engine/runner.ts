@@ -340,6 +340,20 @@ export class Runner extends EventEmitter {
     return setup;
   }
 
+  reEvaluateAll(): { reevaluated: number } {
+    this.lastEval.clear();
+    this.states.clear();
+    const watched = this.d.db.listWatch();
+    let count = 0;
+    for (const w of watched) {
+      const s = this.evaluateSymbol(w.symbol);
+      if (s) count++;
+    }
+    this.emit('state_reset', { reevaluated: count, total: watched.length });
+    this.log(`re-evaluated ${count}/${watched.length} watched symbols with active strategy settings`);
+    return { reevaluated: count };
+  }
+
   private async dispatch(setup: Setup) {
     const id = this.d.db.insertAlert(setup, false);
     this.emit('alert', { id, setup });

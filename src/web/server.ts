@@ -131,6 +131,12 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
         });
       }
 
+            if (path === '/api/scanner/reset' && req.method === 'POST') {
+        const stats = runner.reEvaluateAll();
+        push('state_full', snapshot());
+        return json(res, 200, { ok: true, ...stats });
+      }
+
       if (path === '/api/strategies/settings' && req.method === 'POST') {
         const b = await readBody(req);
         if (b.globalStrategy && (b.globalStrategy === 'MOD-01' || b.globalStrategy === 'MOD-01D')) {
@@ -142,6 +148,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
         if (b.mod01d && typeof b.mod01d === 'object') {
           db.setStrategyCfg('MOD-01D', b.mod01d);
         }
+        runner.reEvaluateAll();
         push('state_full', snapshot());
         return json(res, 200, { ok: true });
       }
@@ -247,6 +254,8 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
         if (b.strategy === 'MOD-01D') {
           void runner.backfillHtf(sym);
         }
+        runner.evaluateSymbol(sym);
+        push('state_full', snapshot());
         return json(res, ok ? 200 : 404, { ok });
       }
       if (path === '/api/settings' && req.method === 'POST') {

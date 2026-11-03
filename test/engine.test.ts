@@ -139,7 +139,7 @@ describe('Runner (integration with fakes)', () => {
   it('replays a scenario and emits WATCH -> ARMED -> ENTRY_READY alerts exactly once each (paper mode)', async () => {
     const db = new Db(':memory:');
     const { candles } = longScenario();
-    const cfg = loadConfig({ PAPER_MODE: 'true', USE_KILLZONE: 'false', EVAL_THROTTLE_SEC: '0' } as any);
+    const cfg = loadConfig({ PAPER_MODE: 'true', USE_KILLZONE: 'false', EVAL_THROTTLE_SEC: '0', LTF_MINUTES: '1' } as any);
     const sent: string[] = [];
     const runner = new Runner({
       cfg, db,
@@ -180,5 +180,30 @@ describe('Runner (integration with fakes)', () => {
     expect(await runner.handleCommand('mute', [])).toContain('muted');
     expect(runner.muted).toBe(true);
     expect(await runner.handleCommand('remove', ['BTC_USDT'])).toContain('removed');
+  });
+  it('reEvaluateAll clears cached states and re-runs evaluation across all watched coins', async () => {
+    const db = new Db(':memory:');
+    db.addWatch('TEST_USDT');
+    const { candles } = longScenario();
+    const cfg = loadConfig({ PAPER_MODE: 'true', USE_KILLZONE: 'false', EVAL_THROTTLE_SEC: '0', LTF_MINUTES: '1' } as any);
+    const runner = new Runner({
+      cfg, db,
+      feed: { subscribe() {}, unsubscribe() {} },
+      fetchKlines: async () => [],
+      fetchContracts: async () => [],
+      notifiers: [],
+    });
+
+    for (const c of candles) runner.onKline('TEST_USDT', c);
+    expect(runner.states.get('TEST_USDT')?.stage).toBe('ENTRY_READY');
+
+    const res = runner.reEvaluateAll();
+    expect(res.reevaluated).toBe(1);
+    expect(runner.states.get('TEST_USDT')?.stage).toBe('ENTRY_READY');
+  });
+
+  it('defaults to 3m LTF execution timeframe in loadConfig()', () => {
+    const cfg = loadConfig({} as any);
+    expect(cfg.strategy.ltfMinutes).toBe(3);
   });
 });

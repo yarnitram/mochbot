@@ -24,7 +24,7 @@ describe('Auto-Scanner', () => {
   it('filters alert policy: auto coins skip WATCH, but fire ARMED and ENTRY_READY', async () => {
     const db = new Db(':memory:');
     const { candles } = longScenario();
-    const cfg = loadConfig({ PAPER_MODE: 'true', USE_KILLZONE: 'false', EVAL_THROTTLE_SEC: '0' } as any);
+    const cfg = loadConfig({ PAPER_MODE: 'true', USE_KILLZONE: 'false', EVAL_THROTTLE_SEC: '0', LTF_MINUTES: '1' } as any);
     const sentStages: string[] = [];
 
     const runner = new Runner({
