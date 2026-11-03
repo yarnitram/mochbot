@@ -324,6 +324,7 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':
 let state = { watchlist: [], activeTrades: [], performance: {} };
 let analyticsData = [];
 let currentJournalSymbol = null;
+let currentTab = 'scanner';
 
 // Audio Synthesizer
 let audioCtx = null;
@@ -394,6 +395,7 @@ $('test-audio').onclick = () => {
 
 // Tab Navigation
 function switchTab(tabId) {
+  currentTab = tabId;
   $('view-scanner').style.display = tabId === 'scanner' ? 'grid' : 'none';
   $('view-analytics').style.display = tabId === 'analytics' ? 'block' : 'none';
   $('view-journal').style.display = tabId === 'journal' ? 'block' : 'none';
@@ -405,14 +407,21 @@ function switchTab(tabId) {
 
 $('nav-scanner').onclick = () => { window.location.hash = '#scanner'; switchTab('scanner'); };
 $('nav-analytics').onclick = () => { window.location.hash = '#analytics'; switchTab('analytics'); loadAnalytics(); };
-$('nav-journal').onclick = () => { if (currentJournalSymbol) switchTab('journal'); };
+$('nav-journal').onclick = () => { if (currentJournalSymbol) openJournal(currentJournalSymbol, true); };
 $('journal-back').onclick = () => { window.location.hash = '#analytics'; switchTab('analytics'); loadAnalytics(); };
 
 function handleRoute() {
   const hash = window.location.hash || '#scanner';
   if (hash.startsWith('#journal/')) {
     const sym = hash.replace('#journal/', '').trim();
-    if (sym) openJournal(sym);
+    if (sym) openJournal(sym, true);
+  } else if (hash === '#journal') {
+    if (currentJournalSymbol) {
+      openJournal(currentJournalSymbol, true);
+    } else {
+      window.location.hash = '#scanner';
+      switchTab('scanner');
+    }
   } else if (hash === '#analytics') {
     switchTab('analytics');
     loadAnalytics();
@@ -589,12 +598,20 @@ $('filter-coin').oninput = renderAnalytics;
 $('filter-type').onchange = renderAnalytics;
 
 // ---------- VIEW 3: COIN TRADE JOURNAL ----------
-async function openJournal(symbol) {
+async function openJournal(symbol, navigate = true) {
   currentJournalSymbol = symbol;
-  window.location.hash = `#journal/${symbol}`;
   $('nav-journal').style.display = 'inline-flex';
   $('nav-journal').textContent = `📔 Journal: ${symbol}`;
-  switchTab('journal');
+
+  if (navigate) {
+    const targetHash = `#journal/${symbol}`;
+    if (window.location.hash !== targetHash) {
+      window.location.hash = targetHash;
+    }
+    switchTab('journal');
+  } else if (currentTab !== 'journal') {
+    return;
+  }
 
   $('journal-symbol').textContent = symbol;
   $('journal-meta').textContent = 'Loading journal details...';
@@ -707,13 +724,24 @@ function connect() {
   const es = new EventSource('/api/events');
   es.addEventListener('open', () => { $('conn').textContent = 'connected'; $('conn').style.color = 'var(--green)'; });
   es.addEventListener('error', () => { $('conn').textContent = 'reconnecting'; $('conn').style.color = 'var(--amber)'; });
-  es.addEventListener('state_full', e => { state = JSON.parse(e.data); renderMeta(); renderWl(); renderTrades(); renderPerformance(); if (currentJournalSymbol) openJournal(currentJournalSymbol); });
+  es.addEventListener('state_full', e => {
+    state = JSON.parse(e.data);
+    renderMeta();
+    renderWl();
+    renderTrades();
+    renderPerformance();
+    if (currentTab === 'journal' && currentJournalSymbol) {
+      openJournal(currentJournalSymbol, false);
+    }
+  });
   es.addEventListener('state', e => {
     const { symbol, setup } = JSON.parse(e.data);
     const row = state.watchlist.find(w => w.symbol === symbol);
     if (row) row.state = setup;
     renderWl();
-    if (currentJournalSymbol === symbol) openJournal(symbol);
+    if (currentTab === 'journal' && currentJournalSymbol === symbol) {
+      openJournal(symbol, false);
+    }
   });
   es.addEventListener('alert', e => {
     const { setup } = JSON.parse(e.data);
@@ -723,16 +751,22 @@ function connect() {
     } else if (setup.stage === 'ARMED') {
       playChime();
     }
-    if (currentJournalSymbol === setup.symbol) openJournal(setup.symbol);
+    if (currentTab === 'journal' && currentJournalSymbol === setup.symbol) {
+      openJournal(setup.symbol, false);
+    }
   });
   es.addEventListener('milestone', () => {
     load();
     playChime();
-    if (currentJournalSymbol) openJournal(currentJournalSymbol);
+    if (currentTab === 'journal' && currentJournalSymbol) {
+      openJournal(currentJournalSymbol, false);
+    }
   });
   es.addEventListener('trade_opened', () => {
     load();
-    if (currentJournalSymbol) openJournal(currentJournalSymbol);
+    if (currentTab === 'journal' && currentJournalSymbol) {
+      openJournal(currentJournalSymbol, false);
+    }
   });
 }
 
