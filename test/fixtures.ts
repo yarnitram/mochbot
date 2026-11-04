@@ -20,6 +20,17 @@ export function limitScenario() {
 /** 2024-01-01 00:00:00 UTC */
 export const T0 = 1704067200;
 
+export function turtleScenario(){
+ const history=Array.from({length:20},(_,i)=>({t:T0-(20-i)*3600,o:105,h:110,l:100,c:105,v:1}));
+ const candles:Candle[]=Array.from({length:70},(_,i)=>({t:T0-(70-i)*60,o:105,h:105.1,l:104.9,c:105,v:1}));
+ const append=(start:number,o:number,h:number,l:number,c:number)=>{
+  for(let i=0;i<5;i++)candles.push({t:start+i*60,o:i===0?o:c,h:i===2?h:Math.max(o,c),l:i===3?l:Math.min(o,c),c,v:1});
+ };
+ append(T0,101,102,99,101); // low sweep and reclaim, entry at old range low 100
+ append(T0+300,101,102,99.8,100.4); // later unambiguous limit touch
+ return {candles,history,pendingCount:75,touchedCount:80};
+}
+
 /** Fully completed trend/pullback/confirmation sequence with a later limit touch. */
 export function emaScenario() {
   const candles:Candle[]=[];

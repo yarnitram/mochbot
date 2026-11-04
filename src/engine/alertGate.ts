@@ -18,7 +18,7 @@ export class AlertGate {
     return `${s.symbol}|${s.setupId}|${s.stage}`;
   }
   private cooldownKey(s:Pick<Setup,'symbol'|'setupId'|'stage'>) {
-    const scope=s.setupId?.includes(':EMA:')?'EMA':s.setupId?.includes('01E:')?'MOD-01E':'legacy';
+    const scope=s.setupId?.includes(':TURTLE:')?'TURTLE':s.setupId?.includes(':EMA:')?'EMA':s.setupId?.includes('01E:')?'MOD-01E':'legacy';
     return `${s.symbol}|${scope}|${s.stage}`;
   }
 

@@ -261,7 +261,7 @@ export function generateChartSvg(symbol: string, htfCandles: Candle[], ltfCandle
   const htfSlice = htfCandles.slice(-50);
   const ltfSlice = ltfCandles.slice(-60);
 
-  const zoneInfo = setup.zone ? { top: setup.zone.top, bottom: setup.zone.bottom, isDemand: isLong, label:setup.strategyId==='EMA-PULLBACK'?'EMA PULLBACK':undefined } : null;
+  const zoneInfo = setup.zone ? { top: setup.zone.top, bottom: setup.zone.bottom, isDemand: isLong, label:setup.strategyId==='TURTLE-SOUP'?'REF RANGE':setup.strategyId==='EMA-PULLBACK'?'EMA PULLBACK':undefined } : null;
 
   const positionBox: PositionBoxConfig | null = (setup.entry && setup.sl) ? {
     direction: isLong ? 'LONG' : 'SHORT',
@@ -272,8 +272,8 @@ export function generateChartSvg(symbol: string, htfCandles: Candle[], ltfCandle
   } : null;
 
   const dateStr = new Date(setup.ts * 1000).toUTCString();
-  const htfTitle = setup.strategyId === 'EMA-PULLBACK' ? `${(setup.emaTimeframes?.trendMinutes??60)/60}H EMA Trend Context` : setup.strategyId === 'MOD-01D' ? '1H Higher Timeframe (POI Context)' : setup.strategyId === 'MOD-01E' ? '1H Bias & 15m Dealing Range' : '15m Higher Timeframe (POI Context)';
-  const ltfTitle = setup.strategyId==='EMA-PULLBACK' ? `${setup.emaTimeframes?.confirmationMinutes??setup.ltfMinutes??5}m Execution Timeframe (TradingView Position & Levels)` : ['MOD-01D','MOD-01E'].includes(setup.strategyId??'') ? '5m Execution Timeframe (TradingView Position & Levels)' : `${setup.ltfMinutes ?? 3}m Execution Timeframe (TradingView Position & Levels)`;
+  const htfTitle = setup.strategyId==='TURTLE-SOUP'?`${(setup.turtleContext?.rangeMinutes??60)/60}H Turtle Soup Reference Range`:setup.strategyId === 'EMA-PULLBACK' ? `${(setup.emaTimeframes?.trendMinutes??60)/60}H EMA Trend Context` : setup.strategyId === 'MOD-01D' ? '1H Higher Timeframe (POI Context)' : setup.strategyId === 'MOD-01E' ? '1H Bias & 15m Dealing Range' : '15m Higher Timeframe (POI Context)';
+  const ltfTitle = setup.strategyId==='TURTLE-SOUP'?`${setup.turtleContext?.confirmationMinutes??setup.ltfMinutes??5}m Sweep / Reclaim Execution`:setup.strategyId==='EMA-PULLBACK' ? `${setup.emaTimeframes?.confirmationMinutes??setup.ltfMinutes??5}m Execution Timeframe (TradingView Position & Levels)` : ['MOD-01D','MOD-01E'].includes(setup.strategyId??'') ? '5m Execution Timeframe (TradingView Position & Levels)' : `${setup.ltfMinutes ?? 3}m Execution Timeframe (TradingView Position & Levels)`;
 
   return `
 <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="background:#0d1117;">

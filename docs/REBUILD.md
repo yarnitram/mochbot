@@ -1,6 +1,18 @@
 # Mochbot 1.0 — MOD-01E Limit Desk
 
-This version supports MOD-01E and EMA Trend Pullback Limit (`EMA-PULLBACK`). Existing SQLite trades, charts and historical strategy attribution remain available. Choose a default strategy or BOTH in Settings → Strategy selection, optionally applying it to existing coins, or override each coin in Market watch. MOD-01E remains the default. The previous dashboard is available at `/legacy.html` for journal analytics, manual trade management and MOCHEX controls; use the main dashboard to manage the new strategy.
+This version supports MOD-01E, EMA Trend Pullback Limit (`EMA-PULLBACK`), and Turtle Soup-inspired Range Reversal (`TURTLE-SOUP`). Existing SQLite trades, charts and historical strategy attribution remain available. Choose a default strategy in Settings → Strategy selection, optionally applying it to existing coins, or override each coin in Market watch. BOTH retains MOD-01E + EMA; ALL evaluates all three. MOD-01E remains the default. The previous dashboard is available at `/legacy.html` for journal analytics, manual trade management and MOCHEX controls; use the main dashboard to manage new strategies.
+
+## Turtle Soup-inspired range reversal
+
+This is an explicit intraday adaptation, not a reproduction of Raschke/Connors' original 20-day Turtle Soup stop-entry rules. Default preset: prior 20 completed 1H bars define a frozen high/low range; completed 5m candles provide sweep/reclaim confirmation. Optional preset: 20 completed 4H bars with 15m confirmation. Reference bars must have closed before the sweep candle opens; the sweep candle cannot define its own range.
+
+For a long: a completed confirmation candle sweeps below the reference low by at least 0.1 × confirmation ATR(14). That candle or either of the next two confirmation candles must close strictly inside the frozen range. Shorts mirror these rules. Both-side sweeps, crossing the opposite boundary before reclaim, insufficient history and expired reclaim windows are rejected. At most one sweep attempt per reference range end-time and direction is admitted.
+
+Default limit entry is the reclaimed range boundary. An optional 50% reclaim-candle midpoint entry is available, provided it remains inside the original range and on the retracement side of the reclaim close. Stop is beyond the full sweep extreme plus 0.2 × confirmation ATR. TP1 is the frozen range midpoint and TP2 its opposite boundary. Minimum reward filters default to 1R at TP1 and 2R at TP2. Target prices and R multiples therefore vary with the actual range; they are not fixed 2R/3R targets.
+
+Orders start only after reclaim confirmation closes and expire after six confirmation bars (30 minutes on 1H/5m, 90 minutes on 4H/15m). Subsequent completed one-minute candles detect simulated touches; stop/entry ambiguity is conservatively invalidated. A completed trade closes 50% at TP1 and moves the remaining stop to entry using existing lifecycle rules. The strategy operates without EMA trend or MOD-01E session filters. Notes show the range, sweep, entry rule, targets, reward multiples and expiry.
+
+ALL mode has deterministic simultaneous priority MOD-01E → EMA → Turtle Soup. Existing shared dollar risk/margin limits and single pending/active trade per coin apply across all three; increasing discovery counts does not increase trade-risk limits. An explicitly chosen strategy or ALL can be applied to the existing watchlist. Disabling a strategy retains management of already active trades. All tests/previews use synthetic data; this adaptation has no demonstrated live-market edge or profitability claim.
 
 ## EMA Pullback Limit
 
@@ -30,6 +42,8 @@ Structure and ATR gates use only candles closed at that point in the replay. Inc
 Trade milestones use observed tick close prices, rather than cumulative candle extremes that may predate entry. A closed setup cannot open twice. Original SL is retained so configurable target R remains correct after moving the stop to break-even. For legacy trades already past TP1 without an original SL, migration assumes the former 3R TP1 default. Historical P&L excludes fees, funding, slippage and order-book fill effects.
 
 ## Operations
+
+Coin discovery defaults are Top 100 volume, Top 100 memes, Top 70 AI, Top 70 gaming, Top 50 gainers and Top 50 losers. Each category has an independent Top N setting (integer 1–500) under Settings → Coin discovery. Counts are limited by matching contracts available on MEXC. The default combined discovery cap is 300; an explicitly saved cap is retained and can be edited (10–1000). Duplicate contracts count once. Existing high-leverage mode includes all eligible 200×+ contracts within the combined cap and restricts all enabled category feeds to that leverage threshold. Discovery capacity does not increase the separate shared trade-risk budget.
 
 The Live trades tab automatically lists touched limits registered as OPEN/TP1_HIT simulated positions. It shows current price, net/secured/unrealized P&L, R, return on entry margin, entry sizing, current stop, both targets and progress toward the next target. After TP1, 50% is secured and only the remaining half contributes unrealized P&L. Stale quotes are labeled and unavailable prices show no fabricated zero P&L. Closed positions move to the journal. These are simulated positions, not verified exchange fills.
 

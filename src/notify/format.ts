@@ -18,7 +18,7 @@ export function formatAlert(s: Setup): string {
   const dir = s.direction === 'LONG' ? 'LONG 🟢' : 'SHORT 🔴';
   const stratBadge = s.strategyId ? `[${s.strategyId}] ` : '';
   const lines: string[] = [`${ICON[s.stage] ?? ''} ${stratBadge}${s.symbol} ${dir}`, LABEL[s.stage] ?? s.stage];
-  if (s.strategyId === 'MOD-01E' || s.strategyId === 'EMA-PULLBACK') {
+  if (s.strategyId === 'MOD-01E' || s.strategyId === 'EMA-PULLBACK' || s.strategyId === 'TURTLE-SOUP') {
     lines[1] = s.stage === 'ARMED' ? 'PENDING LIMIT: ready to place' : s.stage === 'ENTRY_READY' ? 'SIMULATED LIMIT TOUCH' : s.reason ?? s.stage;
     if (s.reason) lines.push(s.reason);
     if (s.orderNote) lines.push(`Setup notes: ${s.orderNote}`);
@@ -31,7 +31,7 @@ export function formatAlert(s: Setup): string {
   }
   if (s.stage === 'ARMED') {
     const tfBreak = (s.strategyId === 'MOD-01D' || s.strategyId === 'MOD-01E') ? '5m' : `${s.ltfMinutes ?? 1}m`;
-    if (s.strategyId === 'MOD-01E' || s.strategyId === 'EMA-PULLBACK') {
+    if (s.strategyId === 'MOD-01E' || s.strategyId === 'EMA-PULLBACK' || s.strategyId === 'TURTLE-SOUP') {
       lines.push(`Limit entry: ${p(s.entry)}`, `SL: ${p(s.sl)}`, `TP1: ${p(s.tp1)}`, `TP2: ${p(s.tp2)}`);
       if (s.sizing) lines.push(`Suggested margin: $${s.sizing.margin.toFixed(4)} USDT | Leverage: ${s.sizing.leverage}x`,
         `Estimated SL loss: $${Math.abs(s.sizing.slRiskUsd).toFixed(2)} | Risk budget: $${s.sizing.riskPerTrade.toFixed(2)} (excludes fees/slippage)`);
@@ -43,7 +43,7 @@ export function formatAlert(s: Setup): string {
     const risk=s.entry!==null&&s.sl!==null?Math.abs(s.entry-s.sl):0;
     const rr=(target:number|null,fallback:number)=>risk>0&&target!==null&&s.entry!==null?Number((Math.abs(target-s.entry)/risk).toFixed(2)):fallback;
     lines.push(`Entry: ${p(s.entry)}`, `SL: ${p(s.sl)}`, `TP1 (1:${rr(s.tp1,3)}): ${p(s.tp1)}`, `TP2 (1:${rr(s.tp2,5)}): ${p(s.tp2)}`);
-    if (s.orderType) lines.push(`Order: ${s.orderType.replace('_', '-')}${['MOD-01E','EMA-PULLBACK'].includes(s.strategyId??'') ? '' : ' - ' + (s.orderNote ?? '')}`);
+    if (s.orderType) lines.push(`Order: ${s.orderType.replace('_', '-')}${['MOD-01E','EMA-PULLBACK','TURTLE-SOUP'].includes(s.strategyId??'') ? '' : ' - ' + (s.orderNote ?? '')}`);
     if (s.sizing) {
       const qtyStr = s.sizing.qtyCoins < 0.01 ? s.sizing.qtyCoins.toPrecision(3) : s.sizing.qtyCoins.toFixed(4);
       lines.push(

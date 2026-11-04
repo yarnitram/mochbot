@@ -12,9 +12,24 @@ export type Stage = 'IDLE' | 'WATCH' | 'ARMED' | 'ENTRY_READY';
 export type Direction = 'LONG' | 'SHORT';
 export type Sensitivity = 'strict' | 'balanced' | 'sensitive';
 export type OrderType = 'MARKET' | 'LIMIT' | 'TRIGGER_LIMIT';
-export type ActiveStrategyId = 'MOD-01E' | 'EMA-PULLBACK';
+export type ActiveStrategyId = 'MOD-01E' | 'EMA-PULLBACK' | 'TURTLE-SOUP';
 export type StrategyId = 'MOD-01' | 'MOD-01D' | ActiveStrategyId;
-export type StrategySelection = StrategyId | 'BOTH';
+export type StrategySelection = StrategyId | 'BOTH' | 'ALL';
+
+export interface TurtleSoupCfg {
+  timeframePreset:'1H/5m'|'4H/15m';
+  lookbackBars:number;
+  reclaimWindowBars:number;
+  entryMode:'Reclaimed level'|'50% reclaim candle';
+  orderExpiry:number;
+  minSweepAtr:number;
+  stopBufferAtr:number;
+  minTp1R:number;
+  minTp2R:number;
+  watchDistanceAtr:number;
+}
+export const DEFAULT_TURTLE_CFG:TurtleSoupCfg={timeframePreset:'1H/5m',lookbackBars:20,reclaimWindowBars:3,
+  entryMode:'Reclaimed level',orderExpiry:6,minSweepAtr:.1,stopBufferAtr:.2,minTp1R:1,minTp2R:2,watchDistanceAtr:1};
 
 export interface EmaPullbackCfg {
   timeframePreset: '1H/15m/5m' | '4H/1H/15m';
@@ -212,6 +227,7 @@ export interface PositionSizing {
 }
 
 export interface Setup {
+  turtleContext?:{rangeMinutes:number;confirmationMinutes:number;referenceHigh:number;referenceLow:number;rangeEnd:number;sweepExtreme:number;reclaimedAt:number};
   emaTimeframes?: {trendMinutes:number;pullbackMinutes:number;confirmationMinutes:number;preset:EmaPullbackCfg['timeframePreset']};
   limitContext?: LimitContext;
   reason?: string;

@@ -8,8 +8,10 @@ import type { AppConfig } from '../config.js';
 import { validateMod01eConfig } from '../strategy/mod01e.js';
 import { markTrade } from '../engine/markTrade.js';
 import { validateEmaConfig } from '../strategy/emaPullback.js';
+import {validateTurtleConfig} from '../strategy/turtleSoup.js';
 import type { StrategySelection } from '../types.js';
-const validSelection=(s:unknown):s is StrategySelection=>['MOD-01E','EMA-PULLBACK','BOTH'].includes(s as string);
+import { DISCOVERY_DEFAULTS,validDiscoveryCount,type DiscoveryLimitKey } from '../discovery.js';
+const validSelection=(s:unknown):s is StrategySelection=>['MOD-01E','EMA-PULLBACK','TURTLE-SOUP','BOTH','ALL'].includes(s as string);
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -81,7 +83,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
     version: '1.0.0',
     strategy: db.getGlobalStrategy(),
     maxOpenRisk:runner.maxOpenRisk,
-    strategyPerformance:['MOD-01E','EMA-PULLBACK'].map(id=>({id,...db.getPerformanceSummary(id)})),
+    strategyPerformance:['MOD-01E','EMA-PULLBACK','TURTLE-SOUP'].map(id=>({id,...db.getPerformanceSummary(id)})),
     serverTime: Date.now(),
     limitOrders: db.listLimitOrders().map(o => {
       const payload = JSON.parse(o.payload);
@@ -101,6 +103,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
     ultraLevScanner: runner.ultraLevScannerEnabled,
     minGainerVolume: runner.minGainerVolume,
     maxActiveCoins: runner.maxActiveCoins,
+    discoveryLimits:runner.discoveryLimits,
     minLeverage: runner.minLeverage,
     globalStrategy: db.getGlobalStrategy(),
     channels: { telegram: !!cfg.telegramToken, discord: !!cfg.discordWebhook },
@@ -170,6 +173,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
               config: runner.mod01eCfg(''),
             },
             {id:'EMA-PULLBACK',name:'EMA Trend Pullback Limit',description:'Choose 1H / 15m / 5m or 4H / 1H / 15m. Trend → EMA-zone pullback → confirmation → confirmation-candle retracement limit.',config:runner.emaCfg()},
+            {id:'TURTLE-SOUP',name:'Turtle Soup-inspired Range Reversal',description:'Prior completed range → sweep and reclaim close → boundary retest limit. TP1 midpoint; TP2 opposite range edge. Intraday adaptation, not the original 20-day system.',config:runner.turtleCfg()},
           ],
         });
       }
@@ -184,14 +188,16 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
       if (path === '/api/strategies/settings' && req.method === 'POST') {
         const b = await readBody(req);
         if (b.globalStrategy && !validSelection(b.globalStrategy)) return json(res, 400, { error: 'Unsupported strategy selection' });
-        let validated,validatedEma;
+        let validated,validatedEma,validatedTurtle;
         try {
           if(b.mod01e)validated = validateMod01eConfig({ ...runner.mod01eCfg(''), ...b.mod01e });
           if(b.ema)validatedEma=validateEmaConfig({...runner.emaCfg(),...b.ema});
+          if(b.turtle)validatedTurtle=validateTurtleConfig({...runner.turtleCfg(),...b.turtle});
         }
         catch (e) { return json(res, 400, { error: (e as Error).message }); }
         if(validated){db.setStrategyCfg('MOD-01E', validated);runner.setKillzone(validated.useKillzone)}
         if(validatedEma)db.setStrategyCfg('EMA-PULLBACK',validatedEma);
+        if(validatedTurtle)db.setStrategyCfg('TURTLE-SOUP',validatedTurtle);
         if(b.globalStrategy) {
           db.setGlobalStrategy(b.globalStrategy);
           if(b.applyToWatchlist===true)for(const w of db.listWatch())db.updateWatch(w.symbol,{strategy:b.globalStrategy});
@@ -205,9 +211,9 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
       if (stratMatch && req.method === 'POST') {
         const id = stratMatch[1].toUpperCase() as any;
         const b = await readBody(req);
-        if (!['MOD-01E','EMA-PULLBACK'].includes(id)) return json(res, 400, { error: 'Unsupported strategy' });
+        if (!['MOD-01E','EMA-PULLBACK','TURTLE-SOUP'].includes(id)) return json(res, 400, { error: 'Unsupported strategy' });
         let validated;
-        try { validated = id==='EMA-PULLBACK'?validateEmaConfig({...runner.emaCfg(),...b}):validateMod01eConfig({ ...runner.mod01eCfg(''), ...b }); }
+        try { validated = id==='TURTLE-SOUP'?validateTurtleConfig({...runner.turtleCfg(),...b}):id==='EMA-PULLBACK'?validateEmaConfig({...runner.emaCfg(),...b}):validateMod01eConfig({ ...runner.mod01eCfg(''), ...b }); }
         catch (e) { return json(res, 400, { error: (e as Error).message }); }
         db.setStrategyCfg(id, validated);
         if('useKillzone' in validated)runner.setKillzone(validated.useKillzone);
@@ -390,7 +396,11 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
 
       if (path === '/api/settings' && req.method === 'POST') {
         const b = await readBody(req);
+        const limitKeys=Object.keys(DISCOVERY_DEFAULTS) as DiscoveryLimitKey[];
+        for(const key of limitKeys)if(b[key]!==undefined&&!validDiscoveryCount(b[key]))return json(res,400,{error:`${key} must be a whole number from 1 to 500`});
+        if(b.max_active_coins!==undefined&&(!Number.isInteger(b.max_active_coins)||b.max_active_coins<10||b.max_active_coins>1000))return json(res,400,{error:'Discovery coin cap must be a whole number from 10 to 1000'});
         if(b.max_open_risk!==undefined&&(!Number.isFinite(b.max_open_risk)||b.max_open_risk<=0))return json(res,400,{error:'Shared risk cap must be positive'});
+        for(const key of limitKeys)if(b[key]!==undefined)db.setSetting(key,String(b[key]));
         if (typeof b.killzone === 'boolean') runner.setKillzone(b.killzone);
         if (typeof b.muted === 'boolean') runner.setMuted(b.muted);
         const discoveryKeys = ['auto_scanner','meme_scanner','ai_scanner','game_scanner','gainers_scanner','losers_scanner','ultra_lev_scanner'];
@@ -403,7 +413,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
         if (typeof b.account_capital === 'number' && b.account_capital > 0) db.setAccountCapital(b.account_capital);
         if (typeof b.default_margin === 'number' && b.default_margin > 0) db.setDefaultMargin(b.default_margin);
         if (typeof b.risk_per_trade === 'number' && b.risk_per_trade > 0) db.setRiskPerTrade(b.risk_per_trade);
-        if (discoveryKeys.some(key => typeof b[key] === 'boolean') || b.max_active_coins !== undefined || b.min_leverage !== undefined || b.min_gainer_volume !== undefined) {
+        if (discoveryKeys.some(key => typeof b[key] === 'boolean') || limitKeys.some(key=>b[key]!==undefined) || b.max_active_coins !== undefined || b.min_leverage !== undefined || b.min_gainer_volume !== undefined) {
           runner.ensureAutoScanTimer();
           await runner.runAutoScan();
         }

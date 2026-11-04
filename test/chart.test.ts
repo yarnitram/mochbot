@@ -74,4 +74,9 @@ describe('Chart Renderer', () => {
     expect(svg).toContain('4H EMA Trend Context');expect(svg).toContain('15m Execution Timeframe');
     expect(svg).not.toContain('>5m Execution Timeframe');
   });
+  it('labels Turtle Soup charts as range and sweep/reclaim context',()=>{
+    const svg=generateChartSvg('BTC_USDT',htf,ltf,{...setup,strategyId:'TURTLE-SOUP',turtleContext:{rangeMinutes:240,confirmationMinutes:15,referenceHigh:110,referenceLow:100,rangeEnd:0,sweepExtreme:99,reclaimedAt:1}});
+    expect(svg).toContain('4H Turtle Soup Reference Range');expect(svg).toContain('15m Sweep / Reclaim Execution');
+    expect(svg).toContain('REF RANGE');expect(svg).not.toContain('DEMAND POI');
+  });
 });

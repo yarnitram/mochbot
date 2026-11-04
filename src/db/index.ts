@@ -354,7 +354,7 @@ export class Db {
 
   getGlobalStrategy(): StrategySelection {
     const value=this.getSetting('global_strategy');
-    return value==='EMA-PULLBACK'||value==='BOTH'?value:'MOD-01E';
+    return value==='EMA-PULLBACK'||value==='TURTLE-SOUP'||value==='BOTH'||value==='ALL'?value:'MOD-01E';
   }
 
   setGlobalStrategy(strat: StrategySelection): void {

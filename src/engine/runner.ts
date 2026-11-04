@@ -4,10 +4,12 @@ import { join, dirname } from 'node:path';
 import type { AppConfig } from '../config.js';
 import type { Db } from '../db/index.js';
 import { CandleStore } from '../data/candleStore.js';
-import type { Candle, Setup, StrategyCfg, ActiveStrategyId, StrategySelection, EmaPullbackCfg } from '../types.js';
-import { DEFAULT_EMA_CFG } from '../types.js';
+import type { Candle, Setup, StrategyCfg, ActiveStrategyId, StrategySelection, EmaPullbackCfg,TurtleSoupCfg } from '../types.js';
+import { DEFAULT_EMA_CFG,DEFAULT_TURTLE_CFG } from '../types.js';
+import {evaluateTurtleSoup,turtleTimeframes} from '../strategy/turtleSoup.js';
 import { evaluateEmaPullback,emaTimeframes } from '../strategy/emaPullback.js';
 import { assessSharedRisk } from './riskGate.js';
+import { DISCOVERY_DEFAULTS,validDiscoveryCount, type DiscoveryLimitKey } from '../discovery.js';
 import { evaluateMod01e } from '../strategy/mod01e.js';
 import { aggregate } from '../strategy/indicators.js';
 import { StrategyId, Mod01dCfg, DEFAULT_MOD01D_CFG, Mod01eCfg, DEFAULT_MOD01E_CFG } from '../types.js';
@@ -113,7 +115,13 @@ export class Runner extends EventEmitter {
   }
   get maxActiveCoins(): number {
     const v = this.d.db.getSetting('max_active_coins');
-    return v ? Number(v) : 150;
+    return v ? Number(v) : 300;
+  }
+  get discoveryLimits():Record<DiscoveryLimitKey,number> {
+    return Object.fromEntries(Object.entries(DISCOVERY_DEFAULTS).map(([key,fallback])=>{
+      const saved=Number(this.d.db.getSetting(key));
+      return [key,validDiscoveryCount(saved)?saved:fallback];
+    })) as Record<DiscoveryLimitKey,number>;
   }
   get minLeverage(): number {
     const v = this.d.db.getSetting('min_leverage');
@@ -189,7 +197,7 @@ export class Runner extends EventEmitter {
 
   getStrategyForSymbol(symbol: string): StrategySelection {
     const selection=this.d.db.listWatch().find(w=>w.symbol===symbol)?.strategy??this.d.db.getGlobalStrategy();
-    return selection==='EMA-PULLBACK'||selection==='BOTH'?selection:'MOD-01E';
+    return ['EMA-PULLBACK','TURTLE-SOUP','BOTH','ALL'].includes(selection)?selection:'MOD-01E';
   }
   get maxOpenRisk():number {
     const value=Number(this.d.db.getSetting('max_open_risk'));
@@ -198,6 +206,7 @@ export class Runner extends EventEmitter {
   emaCfg():EmaPullbackCfg {
     return {...DEFAULT_EMA_CFG,...this.d.db.getStrategyCfg<Partial<EmaPullbackCfg>>('EMA-PULLBACK')};
   }
+  turtleCfg():TurtleSoupCfg{return {...DEFAULT_TURTLE_CFG,...this.d.db.getStrategyCfg<Partial<TurtleSoupCfg>>('TURTLE-SOUP')}}
 
   mod01dCfg(symbol: string): Mod01dCfg {
     const custom = this.d.db.getStrategyCfg('MOD-01D') as Partial<Mod01dCfg>;
@@ -225,7 +234,7 @@ export class Runner extends EventEmitter {
 
   // ---------- lifecycle ----------
   async start() {
-    for (const w of this.d.db.listWatch()) if(!['MOD-01E','EMA-PULLBACK','BOTH'].includes(w.strategy)) this.d.db.updateWatch(w.symbol, { strategy: this.d.db.getGlobalStrategy() });
+    for (const w of this.d.db.listWatch()) if(!['MOD-01E','EMA-PULLBACK','TURTLE-SOUP','BOTH','ALL'].includes(w.strategy)) this.d.db.updateWatch(w.symbol, { strategy: this.d.db.getGlobalStrategy() });
     try {
       this.contracts = await this.d.fetchContracts();
       this.log(`loaded ${this.contracts.length} USDT perpetual contracts`);
@@ -291,23 +300,24 @@ export class Runner extends EventEmitter {
   }
 
   // ---------- auto-scanner ----------
-  async runAutoScan(limit = 50): Promise<string[]> {
+  async runAutoScan(limit?: number): Promise<string[]> {
     if (this.scanInFlight) return this.scanInFlight;
     this.scanInFlight = this.syncAutoScan(limit);
     try { return await this.scanInFlight; } finally { this.scanInFlight = null; }
   }
 
-  private async syncAutoScan(limit: number): Promise<string[]> {
+  private async syncAutoScan(limit?: number): Promise<string[]> {
     const generation = this.scanGeneration;
+    const limits=this.discoveryLimits;
     try {
       this.log(`auto-scanner: fetching multi-sector market feeds from MEXC...`);
       const [volumeSymbols, memeSymbols, aiSymbols, gameSymbols, gainersSymbols, losersSymbols] = await Promise.all([
-        (this.autoScannerEnabled && this.d.fetchTopVolumePerps) ? this.d.fetchTopVolumePerps(limit) : Promise.resolve([]),
-        (this.memeScannerEnabled && this.d.fetchTopMemePerps) ? this.d.fetchTopMemePerps(limit) : Promise.resolve([]),
-        (this.aiScannerEnabled && this.d.fetchTopAiPerps) ? this.d.fetchTopAiPerps(35) : Promise.resolve([]),
-        (this.gameScannerEnabled && this.d.fetchTopGamePerps) ? this.d.fetchTopGamePerps(35) : Promise.resolve([]),
-        (this.gainersScannerEnabled && this.d.fetchTopGainers) ? this.d.fetchTopGainers(this.minGainerVolume, 25) : Promise.resolve([]),
-        (this.losersScannerEnabled && this.d.fetchTopLosers) ? this.d.fetchTopLosers(this.minGainerVolume, 25) : Promise.resolve([]),
+        (this.autoScannerEnabled && this.d.fetchTopVolumePerps) ? this.d.fetchTopVolumePerps(limit??limits.volume_limit) : Promise.resolve([]),
+        (this.memeScannerEnabled && this.d.fetchTopMemePerps) ? this.d.fetchTopMemePerps(limit??limits.meme_limit) : Promise.resolve([]),
+        (this.aiScannerEnabled && this.d.fetchTopAiPerps) ? this.d.fetchTopAiPerps(limits.ai_limit) : Promise.resolve([]),
+        (this.gameScannerEnabled && this.d.fetchTopGamePerps) ? this.d.fetchTopGamePerps(limits.game_limit) : Promise.resolve([]),
+        (this.gainersScannerEnabled && this.d.fetchTopGainers) ? this.d.fetchTopGainers(this.minGainerVolume, limits.gainers_limit) : Promise.resolve([]),
+        (this.losersScannerEnabled && this.d.fetchTopLosers) ? this.d.fetchTopLosers(this.minGainerVolume, limits.losers_limit) : Promise.resolve([]),
       ]);
       if (generation !== this.scanGeneration) return [];
 
@@ -550,11 +560,12 @@ export class Runner extends EventEmitter {
 
   evaluateSymbol(symbol: string): Setup | null {
     const selection=this.getStrategyForSymbol(symbol);
-    const ids:ActiveStrategyId[]=selection==='BOTH'?['MOD-01E','EMA-PULLBACK']:[selection as ActiveStrategyId];
+    const ids:ActiveStrategyId[]=selection==='ALL'?['MOD-01E','EMA-PULLBACK','TURTLE-SOUP']:selection==='BOTH'?['MOD-01E','EMA-PULLBACK']:[selection as ActiveStrategyId];
     for(const order of this.d.db.listPendingLimitOrders().filter(o=>o.symbol===symbol)) {
       const plan=JSON.parse(order.payload) as Setup;
       const presetChanged=plan.strategyId==='EMA-PULLBACK'&&(plan.emaTimeframes?.preset??'1H/15m/5m')!==this.emaCfg().timeframePreset;
-      if(!ids.includes(plan.strategyId as ActiveStrategyId)||presetChanged)this.d.db.saveLimitOrder({...plan,orderStatus:'INVALIDATED',ts:Math.floor(Date.now()/1000),reason:presetChanged?'EMA timeframe preset changed':'Strategy disabled for this coin'});
+      const turtleChanged=plan.strategyId==='TURTLE-SOUP'&&plan.turtleContext?.rangeMinutes!==turtleTimeframes(this.turtleCfg()).rangeMinutes;
+      if(!ids.includes(plan.strategyId as ActiveStrategyId)||presetChanged||turtleChanged)this.d.db.saveLimitOrder({...plan,orderStatus:'INVALIDATED',ts:Math.floor(Date.now()/1000),reason:presetChanged||turtleChanged?'Strategy timeframe preset changed':'Strategy disabled for this coin'});
     }
     const map=new Map<ActiveStrategyId,Setup>();
     for(const id of ids) map.set(id,this.evaluateStrategy(symbol,id));
@@ -572,7 +583,10 @@ export class Runner extends EventEmitter {
     const cfg = this.mod01eCfg(symbol);
     const cBias = cfg.biasTfMinutes === 240 ? this.htf4h.get(symbol) : this.htf1h.get(symbol);
     const emaCfg=this.emaCfg(),emaTf=emaTimeframes(emaCfg);
-    const setup = id==='EMA-PULLBACK'
+    const turtleCfg=this.turtleCfg(),turtleTf=turtleTimeframes(turtleCfg);
+    const setup = id==='TURTLE-SOUP'
+      ? evaluateTurtleSoup(symbol,closed,this.store.forming(symbol),turtleTf.rangeMinutes===240?this.htf4h.get(symbol):this.htf1h.get(symbol),turtleCfg)
+      : id==='EMA-PULLBACK'
       ? evaluateEmaPullback(symbol,closed,this.store.forming(symbol),emaTf.trendMinutes===240?this.htf4h.get(symbol):this.htf1h.get(symbol),emaCfg,
           emaTf.pullbackMinutes===60?this.htf1h.get(symbol):undefined)
       : evaluateMod01e(symbol, closed, this.store.forming(symbol), cBias, cfg);
@@ -642,7 +656,11 @@ export class Runner extends EventEmitter {
         const ltf = this.store.closed(setup.symbol);
         let htfCandles: Candle[];
         let ltfCandles: Candle[];
-        if (setup.strategyId === 'EMA-PULLBACK') {
+        if(setup.strategyId==='TURTLE-SOUP'){
+          const timeframes=setup.turtleContext??turtleTimeframes(this.turtleCfg());
+          htfCandles=(timeframes.rangeMinutes===240?this.htf4h.get(setup.symbol):this.htf1h.get(setup.symbol))??aggregate(ltf,timeframes.rangeMinutes);
+          ltfCandles=aggregate(ltf,timeframes.confirmationMinutes);setup.ltfMinutes=timeframes.confirmationMinutes;
+        } else if (setup.strategyId === 'EMA-PULLBACK') {
           const timeframes=setup.emaTimeframes??emaTimeframes(this.emaCfg());
           htfCandles=(timeframes.trendMinutes===240?this.htf4h.get(setup.symbol):this.htf1h.get(setup.symbol))??aggregate(ltf,timeframes.trendMinutes);
           ltfCandles=aggregate(ltf,timeframes.confirmationMinutes);
@@ -831,7 +849,7 @@ export class Runner extends EventEmitter {
           const s = this.states.get(this.normalize(args[0]));
           return s ? formatAlert(s).replace(/^.*\n/, `${s.symbol} ${s.stage}\n`) : 'No state yet for that symbol.';
         }
-        return `Mode: ${this.d.cfg.paperMode ? 'PAPER (not sending)' : 'LIVE'}\nAuto-scanner: ${this.autoScannerEnabled ? 'on (top 50)' : 'off'}\nKillzone filter: ${this.killzoneGlobal ? 'on' : 'off'}\nMuted: ${this.muted ? 'yes' : 'no'}\nWatching ${this.d.db.listWatch().length} symbols`;
+        return `Mode: ${this.d.cfg.paperMode ? 'PAPER (not sending)' : 'LIVE'}\nAuto-scanner: ${this.autoScannerEnabled ? `on (top ${this.discoveryLimits.volume_limit})` : 'off'}\nKillzone filter: ${this.killzoneGlobal ? 'on' : 'off'}\nMuted: ${this.muted ? 'yes' : 'no'}\nWatching ${this.d.db.listWatch().length} symbols`;
       }
       case 'killzone':
         if (args[0] !== 'on' && args[0] !== 'off') return 'Usage: /killzone on|off';

@@ -24,7 +24,7 @@ describe('Limit Desk HTTP integration',()=>{
    expect(html).toContain('Mochbot · Limit Desk');
    for(const path of ['/desk.js','/desk.css','/legacy.html','/api/health','/api/orders']) expect((await fetch(url+path,{headers})).status).toBe(200);
    const strategies=await(await fetch(url+'/api/strategies',{headers})).json() as any;
-   expect(strategies.strategies.map((s:any)=>s.id)).toEqual(['MOD-01E','EMA-PULLBACK']);
+   expect(strategies.strategies.map((s:any)=>s.id)).toEqual(['MOD-01E','EMA-PULLBACK','TURTLE-SOUP']);
    expect((await fetch(url+'/api/strategies/settings',{method:'POST',headers,body:JSON.stringify({mod01e:{entryFib:2}})})).status).toBe(400);
    expect((await fetch(url+'/api/strategies/settings',{method:'POST',headers,body:JSON.stringify({mod01e:{entryFib:.5,useKillzone:false}})})).status).toBe(200);
    expect(runner.mod01eCfg('').entryFib).toBe(.5);
@@ -80,13 +80,27 @@ describe('Limit Desk HTTP integration',()=>{
    expect((await fetch(url+'/api/watchlist/BTC_USDT',{method:'PATCH',headers,body:JSON.stringify({strategy:'INVALID'})})).status).toBe(400);
    snapshot=await(await fetch(url+'/api/state',{headers})).json() as any;
    expect(snapshot.watchlist[0].setups[0].strategyId).toBe('EMA-PULLBACK');
-   expect(snapshot.strategyPerformance.map((s:any)=>s.id)).toEqual(['MOD-01E','EMA-PULLBACK']);
+   expect(snapshot.strategyPerformance.map((s:any)=>s.id)).toEqual(['MOD-01E','EMA-PULLBACK','TURTLE-SOUP']);
    expect((await fetch(url+'/api/settings',{method:'POST',headers,body:JSON.stringify({max_open_risk:-1})})).status).toBe(400);
    expect((await fetch(url+'/api/strategies/EMA-PULLBACK/settings',{method:'POST',headers,body:JSON.stringify({timeframePreset:'4H/1H/15m'})})).status).toBe(200);
    expect(runner.emaCfg().timeframePreset).toBe('4H/1H/15m');
    expect((await fetch(url+'/api/strategies/EMA-PULLBACK/settings',{method:'POST',headers,body:JSON.stringify({timeframePreset:'1D/4H/1H'})})).status).toBe(400);
    expect((await fetch(url+'/api/strategies/EMA-PULLBACK/settings',{method:'POST',headers,body:JSON.stringify({timeframePreset:'1H/15m/5m'})})).status).toBe(200);
    expect(runner.emaCfg().timeframePreset).toBe('1H/15m/5m');
+   expect((await fetch(url+'/api/settings',{method:'POST',headers,body:JSON.stringify({volume_limit:200,gainers_limit:100,max_active_coins:400})})).status).toBe(200);
+   expect(runner.discoveryLimits.volume_limit).toBe(200);expect(runner.discoveryLimits.gainers_limit).toBe(100);expect(runner.maxActiveCoins).toBe(400);
+   for(const bad of [0,501,1.5,'100',null]){
+    expect((await fetch(url+'/api/settings',{method:'POST',headers,body:JSON.stringify({volume_limit:bad,auto_scanner:true})})).status).toBe(400);
+    expect(runner.autoScannerEnabled).toBe(false);expect(runner.discoveryLimits.volume_limit).toBe(200);
+   }
+   expect((await fetch(url+'/api/settings',{method:'POST',headers,body:JSON.stringify({max_active_coins:1001})})).status).toBe(400);
+   expect((await fetch(url+'/api/strategies/TURTLE-SOUP/settings',{method:'POST',headers,body:JSON.stringify({lookbackBars:25,timeframePreset:'4H/15m'})})).status).toBe(200);
+   expect(runner.turtleCfg().lookbackBars).toBe(25);expect(runner.turtleCfg().timeframePreset).toBe('4H/15m');
+   expect((await fetch(url+'/api/strategies/TURTLE-SOUP/settings',{method:'POST',headers,body:JSON.stringify({lookbackBars:0})})).status).toBe(400);
+   expect((await fetch(url+'/api/strategies/settings',{method:'POST',headers,body:JSON.stringify({globalStrategy:'ALL',applyToWatchlist:true})})).status).toBe(200);
+   expect(db.getGlobalStrategy()).toBe('ALL');expect(runner.strategyStates.get('BTC_USDT')?.size).toBe(3);
+   expect((await fetch(url+'/api/watchlist/BTC_USDT',{method:'PATCH',headers,body:JSON.stringify({strategy:'TURTLE-SOUP'})})).status).toBe(200);
+   expect(db.listWatch()[0].strategy).toBe('TURTLE-SOUP');
   }finally{runner.stop();server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));db.close()}
  });
  it('retains SQLite order plans after reopening the database',()=>{
