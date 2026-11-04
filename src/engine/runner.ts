@@ -5,7 +5,8 @@ import type { AppConfig } from '../config.js';
 import type { Db } from '../db/index.js';
 import { CandleStore } from '../data/candleStore.js';
 import type { Candle, Setup, StrategyCfg, ActiveStrategyId, StrategySelection, EmaPullbackCfg,TurtleSoupCfg } from '../types.js';
-import { DEFAULT_EMA_CFG,DEFAULT_TURTLE_CFG } from '../types.js';
+import { resolveStrategies,isStrategySelection,DEFAULT_EMA_CFG,DEFAULT_TURTLE_CFG, type PackStrategyId } from '../types.js';
+import {evaluatePackStrategy,isPackStrategy,packDefaults,packConfigKey,type PackCfg} from '../strategy/strategyPack.js';
 import {evaluateTurtleSoup,turtleTimeframes} from '../strategy/turtleSoup.js';
 import { evaluateEmaPullback,emaTimeframes } from '../strategy/emaPullback.js';
 import { assessSharedRisk } from './riskGate.js';
@@ -197,7 +198,7 @@ export class Runner extends EventEmitter {
 
   getStrategyForSymbol(symbol: string): StrategySelection {
     const selection=this.d.db.listWatch().find(w=>w.symbol===symbol)?.strategy??this.d.db.getGlobalStrategy();
-    return ['EMA-PULLBACK','TURTLE-SOUP','BOTH','ALL'].includes(selection)?selection:'MOD-01E';
+    return isStrategySelection(selection)?selection:'MOD-01E';
   }
   get maxOpenRisk():number {
     const value=Number(this.d.db.getSetting('max_open_risk'));
@@ -207,6 +208,7 @@ export class Runner extends EventEmitter {
     return {...DEFAULT_EMA_CFG,...this.d.db.getStrategyCfg<Partial<EmaPullbackCfg>>('EMA-PULLBACK')};
   }
   turtleCfg():TurtleSoupCfg{return {...DEFAULT_TURTLE_CFG,...this.d.db.getStrategyCfg<Partial<TurtleSoupCfg>>('TURTLE-SOUP')}}
+  packCfg(id:PackStrategyId):PackCfg{return {...packDefaults(id),...this.d.db.getStrategyCfg<Partial<PackCfg>>(id)}}
 
   mod01dCfg(symbol: string): Mod01dCfg {
     const custom = this.d.db.getStrategyCfg('MOD-01D') as Partial<Mod01dCfg>;
@@ -234,7 +236,7 @@ export class Runner extends EventEmitter {
 
   // ---------- lifecycle ----------
   async start() {
-    for (const w of this.d.db.listWatch()) if(!['MOD-01E','EMA-PULLBACK','TURTLE-SOUP','BOTH','ALL'].includes(w.strategy)) this.d.db.updateWatch(w.symbol, { strategy: this.d.db.getGlobalStrategy() });
+    for (const w of this.d.db.listWatch()) if(!isStrategySelection(w.strategy)) this.d.db.updateWatch(w.symbol, { strategy: this.d.db.getGlobalStrategy() });
     try {
       this.contracts = await this.d.fetchContracts();
       this.log(`loaded ${this.contracts.length} USDT perpetual contracts`);
@@ -560,12 +562,13 @@ export class Runner extends EventEmitter {
 
   evaluateSymbol(symbol: string): Setup | null {
     const selection=this.getStrategyForSymbol(symbol);
-    const ids:ActiveStrategyId[]=selection==='ALL'?['MOD-01E','EMA-PULLBACK','TURTLE-SOUP']:selection==='BOTH'?['MOD-01E','EMA-PULLBACK']:[selection as ActiveStrategyId];
+    const ids=resolveStrategies(selection);
     for(const order of this.d.db.listPendingLimitOrders().filter(o=>o.symbol===symbol)) {
       const plan=JSON.parse(order.payload) as Setup;
       const presetChanged=plan.strategyId==='EMA-PULLBACK'&&(plan.emaTimeframes?.preset??'1H/15m/5m')!==this.emaCfg().timeframePreset;
       const turtleChanged=plan.strategyId==='TURTLE-SOUP'&&plan.turtleContext?.rangeMinutes!==turtleTimeframes(this.turtleCfg()).rangeMinutes;
-      if(!ids.includes(plan.strategyId as ActiveStrategyId)||presetChanged||turtleChanged)this.d.db.saveLimitOrder({...plan,orderStatus:'INVALIDATED',ts:Math.floor(Date.now()/1000),reason:presetChanged||turtleChanged?'Strategy timeframe preset changed':'Strategy disabled for this coin'});
+      const packChanged=isPackStrategy(plan.strategyId)&&plan.packContext?.configKey!==packConfigKey(this.packCfg(plan.strategyId));
+      if(!ids.includes(plan.strategyId as ActiveStrategyId)||presetChanged||turtleChanged||packChanged)this.d.db.saveLimitOrder({...plan,orderStatus:'INVALIDATED',ts:Math.floor(Date.now()/1000),reason:packChanged?'Strategy settings changed':presetChanged||turtleChanged?'Strategy timeframe preset changed':'Strategy disabled for this coin'});
     }
     const map=new Map<ActiveStrategyId,Setup>();
     for(const id of ids) map.set(id,this.evaluateStrategy(symbol,id));
@@ -584,7 +587,10 @@ export class Runner extends EventEmitter {
     const cBias = cfg.biasTfMinutes === 240 ? this.htf4h.get(symbol) : this.htf1h.get(symbol);
     const emaCfg=this.emaCfg(),emaTf=emaTimeframes(emaCfg);
     const turtleCfg=this.turtleCfg(),turtleTf=turtleTimeframes(turtleCfg);
-    const setup = id==='TURTLE-SOUP'
+    const packCfg=isPackStrategy(id)?this.packCfg(id):null;
+    const setup = isPackStrategy(id)&&packCfg
+      ? evaluatePackStrategy(id,symbol,closed,this.store.forming(symbol),packCfg.timeframePreset==='4H/15m'?this.htf4h.get(symbol):this.htf1h.get(symbol),packCfg)
+      : id==='TURTLE-SOUP'
       ? evaluateTurtleSoup(symbol,closed,this.store.forming(symbol),turtleTf.rangeMinutes===240?this.htf4h.get(symbol):this.htf1h.get(symbol),turtleCfg)
       : id==='EMA-PULLBACK'
       ? evaluateEmaPullback(symbol,closed,this.store.forming(symbol),emaTf.trendMinutes===240?this.htf4h.get(symbol):this.htf1h.get(symbol),emaCfg,
@@ -656,7 +662,11 @@ export class Runner extends EventEmitter {
         const ltf = this.store.closed(setup.symbol);
         let htfCandles: Candle[];
         let ltfCandles: Candle[];
-        if(setup.strategyId==='TURTLE-SOUP'){
+        if(isPackStrategy(setup.strategyId)&&setup.packContext){
+          const tf=setup.packContext;
+          htfCandles=(tf.referenceMinutes===240?this.htf4h.get(setup.symbol):this.htf1h.get(setup.symbol))??aggregate(ltf,tf.referenceMinutes);
+          ltfCandles=aggregate(ltf,tf.confirmationMinutes);setup.ltfMinutes=tf.confirmationMinutes;
+        } else if(setup.strategyId==='TURTLE-SOUP'){
           const timeframes=setup.turtleContext??turtleTimeframes(this.turtleCfg());
           htfCandles=(timeframes.rangeMinutes===240?this.htf4h.get(setup.symbol):this.htf1h.get(setup.symbol))??aggregate(ltf,timeframes.rangeMinutes);
           ltfCandles=aggregate(ltf,timeframes.confirmationMinutes);setup.ltfMinutes=timeframes.confirmationMinutes;

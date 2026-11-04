@@ -12,9 +12,38 @@ export type Stage = 'IDLE' | 'WATCH' | 'ARMED' | 'ENTRY_READY';
 export type Direction = 'LONG' | 'SHORT';
 export type Sensitivity = 'strict' | 'balanced' | 'sensitive';
 export type OrderType = 'MARKET' | 'LIMIT' | 'TRIGGER_LIMIT';
-export type ActiveStrategyId = 'MOD-01E' | 'EMA-PULLBACK' | 'TURTLE-SOUP';
+export type PackStrategyId = 'OPENING-RANGE' | 'BREAKOUT-RETEST' | 'VWAP-RECLAIM' | 'BOLLINGER-RANGE' | 'RSI-DIVERGENCE';
+export type ActiveStrategyId = 'MOD-01E' | 'EMA-PULLBACK' | 'TURTLE-SOUP' | PackStrategyId;
+export const ACTIVE_STRATEGIES: ActiveStrategyId[] = ['MOD-01E','EMA-PULLBACK','TURTLE-SOUP','OPENING-RANGE','BREAKOUT-RETEST','VWAP-RECLAIM','BOLLINGER-RANGE','RSI-DIVERGENCE'];
+export const isActiveStrategy = (id: unknown): id is ActiveStrategyId => ACTIVE_STRATEGIES.includes(id as ActiveStrategyId);
+export const isStrategySelection = (id: unknown): id is StrategySelection => {
+  if(isActiveStrategy(id)||id==='BOTH'||id==='ALL')return true;
+  if(typeof id!=='string'||!id.startsWith('CUSTOM:'))return false;
+  const ids=id.slice(7).split(',');
+  return ids.length>1&&ids.length<=ACTIVE_STRATEGIES.length&&new Set(ids).size===ids.length&&ids.every(isActiveStrategy);
+};
 export type StrategyId = 'MOD-01' | 'MOD-01D' | ActiveStrategyId;
-export type StrategySelection = StrategyId | 'BOTH' | 'ALL';
+export type StrategySelection = StrategyId | 'BOTH' | 'ALL' | `CUSTOM:${string}`;
+
+/** Canonical catalog order also defines priority for simultaneous signals. */
+export function resolveStrategies(selection:StrategySelection):ActiveStrategyId[] {
+  if(selection==='ALL')return [...ACTIVE_STRATEGIES];
+  if(selection==='BOTH')return ['MOD-01E','EMA-PULLBACK'];
+  if(isActiveStrategy(selection))return [selection];
+  if(isStrategySelection(selection)&&selection.startsWith('CUSTOM:')){
+    const chosen=selection.slice(7).split(',');return ACTIVE_STRATEGIES.filter(id=>chosen.includes(id));
+  }
+  return ['MOD-01E'];
+}
+export function encodeStrategies(input:unknown):StrategySelection {
+  if(!Array.isArray(input)||!input.length||input.length>ACTIVE_STRATEGIES.length||!input.every(isActiveStrategy)||new Set(input).size!==input.length)
+    throw Error('Choose at least one valid strategy, without duplicates');
+  const ids=ACTIVE_STRATEGIES.filter(id=>input.includes(id));
+  if(ids.length===1)return ids[0];
+  if(ids.length===ACTIVE_STRATEGIES.length)return 'ALL';
+  if(ids.length===2&&ids[0]==='MOD-01E'&&ids[1]==='EMA-PULLBACK')return 'BOTH';
+  return `CUSTOM:${ids.join(',')}`;
+}
 
 export interface TurtleSoupCfg {
   timeframePreset:'1H/5m'|'4H/15m';
@@ -227,6 +256,7 @@ export interface PositionSizing {
 }
 
 export interface Setup {
+  packContext?: {referenceMinutes:number;confirmationMinutes:number;configKey:string;confirmedAt:number};
   turtleContext?:{rangeMinutes:number;confirmationMinutes:number;referenceHigh:number;referenceLow:number;rangeEnd:number;sweepExtreme:number;reclaimedAt:number};
   emaTimeframes?: {trendMinutes:number;pullbackMinutes:number;confirmationMinutes:number;preset:EmaPullbackCfg['timeframePreset']};
   limitContext?: LimitContext;

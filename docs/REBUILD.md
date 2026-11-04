@@ -1,6 +1,6 @@
 # Mochbot 1.0 — MOD-01E Limit Desk
 
-This version supports MOD-01E, EMA Trend Pullback Limit (`EMA-PULLBACK`), and Turtle Soup-inspired Range Reversal (`TURTLE-SOUP`). Existing SQLite trades, charts and historical strategy attribution remain available. Choose a default strategy in Settings → Strategy selection, optionally applying it to existing coins, or override each coin in Market watch. BOTH retains MOD-01E + EMA; ALL evaluates all three. MOD-01E remains the default. The previous dashboard is available at `/legacy.html` for journal analytics, manual trade management and MOCHEX controls; use the main dashboard to manage new strategies.
+This version supports eight strategies: MOD-01E, EMA Trend Pullback Limit (`EMA-PULLBACK`), Turtle Soup-inspired Range Reversal (`TURTLE-SOUP`), and the [five experimental strategy rules and recommended starting presets](STRATEGY-PACK.md). Existing SQLite trades, charts and historical strategy attribution remain available. Choose any nonempty combination using Settings → Strategy selection checkboxes, optionally applying it to existing coins, or override each coin in Market watch. Saved combinations survive restarts without a database migration; legacy BOTH retains MOD-01E + EMA and ALL evaluates all eight. Recommended presets load into the editor for review and require Save strategy to apply. MOD-01E remains the default. The previous dashboard is available at `/legacy.html` for journal analytics, manual trade management and MOCHEX controls; use the main dashboard to manage new strategies.
 
 ## Turtle Soup-inspired range reversal
 
@@ -12,7 +12,7 @@ Default limit entry is the reclaimed range boundary. An optional 50% reclaim-can
 
 Orders start only after reclaim confirmation closes and expire after six confirmation bars (30 minutes on 1H/5m, 90 minutes on 4H/15m). Subsequent completed one-minute candles detect simulated touches; stop/entry ambiguity is conservatively invalidated. A completed trade closes 50% at TP1 and moves the remaining stop to entry using existing lifecycle rules. The strategy operates without EMA trend or MOD-01E session filters. Notes show the range, sweep, entry rule, targets, reward multiples and expiry.
 
-ALL mode has deterministic simultaneous priority MOD-01E → EMA → Turtle Soup. Existing shared dollar risk/margin limits and single pending/active trade per coin apply across all three; increasing discovery counts does not increase trade-risk limits. An explicitly chosen strategy or ALL can be applied to the existing watchlist. Disabling a strategy retains management of already active trades. All tests/previews use synthetic data; this adaptation has no demonstrated live-market edge or profitability claim.
+ALL mode has deterministic simultaneous priority MOD-01E → EMA → Turtle Soup → Opening Range → Breakout Retest → VWAP → Bollinger Range → RSI Divergence. Existing shared dollar risk/margin limits and single pending/active trade per coin apply across all eight; increasing discovery counts does not increase trade-risk limits. An explicitly chosen strategy or ALL can be applied to the existing watchlist. Disabling a strategy retains management of already active trades. All tests/previews use synthetic data; these rules have no demonstrated live-market edge or profitability claim.
 
 ## EMA Pullback Limit
 

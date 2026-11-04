@@ -3,6 +3,7 @@ import type { DatabaseSync as DatabaseSyncT } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { Setup, StrategyId, StrategySelection } from '../types.js';
+import { isStrategySelection } from '../types.js';
 import type { MochexConfig } from '../config.js';
 
 export interface WatchRow {
@@ -354,7 +355,7 @@ export class Db {
 
   getGlobalStrategy(): StrategySelection {
     const value=this.getSetting('global_strategy');
-    return value==='EMA-PULLBACK'||value==='TURTLE-SOUP'||value==='BOTH'||value==='ALL'?value:'MOD-01E';
+    return isStrategySelection(value)?value:'MOD-01E';
   }
 
   setGlobalStrategy(strat: StrategySelection): void {

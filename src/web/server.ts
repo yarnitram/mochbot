@@ -9,9 +9,11 @@ import { validateMod01eConfig } from '../strategy/mod01e.js';
 import { markTrade } from '../engine/markTrade.js';
 import { validateEmaConfig } from '../strategy/emaPullback.js';
 import {validateTurtleConfig} from '../strategy/turtleSoup.js';
-import type { StrategySelection } from '../types.js';
+import { ACTIVE_STRATEGIES,isActiveStrategy,isStrategySelection,resolveStrategies,encodeStrategies,type StrategySelection } from '../types.js';
+import {STRATEGY_RECOMMENDATIONS} from '../strategy/recommendations.js';
+import {PACK_DEFINITIONS,isPackStrategy,validatePackConfig} from '../strategy/strategyPack.js';
 import { DISCOVERY_DEFAULTS,validDiscoveryCount,type DiscoveryLimitKey } from '../discovery.js';
-const validSelection=(s:unknown):s is StrategySelection=>['MOD-01E','EMA-PULLBACK','TURTLE-SOUP','BOTH','ALL'].includes(s as string);
+const validSelection=isStrategySelection;
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -83,7 +85,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
     version: '1.0.0',
     strategy: db.getGlobalStrategy(),
     maxOpenRisk:runner.maxOpenRisk,
-    strategyPerformance:['MOD-01E','EMA-PULLBACK','TURTLE-SOUP'].map(id=>({id,...db.getPerformanceSummary(id)})),
+    strategyPerformance:ACTIVE_STRATEGIES.map(id=>({id,...db.getPerformanceSummary(id)})),
     serverTime: Date.now(),
     limitOrders: db.listLimitOrders().map(o => {
       const payload = JSON.parse(o.payload);
@@ -106,6 +108,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
     discoveryLimits:runner.discoveryLimits,
     minLeverage: runner.minLeverage,
     globalStrategy: db.getGlobalStrategy(),
+    globalStrategies: resolveStrategies(db.getGlobalStrategy()),
     channels: { telegram: !!cfg.telegramToken, discord: !!cfg.discordWebhook },
     performance: db.getPerformanceSummary(),
     activeTrades: db.getActiveTrades().map(t => {
@@ -165,6 +168,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
       if (path === '/api/strategies' && req.method === 'GET') {
         return json(res, 200, {
           globalStrategy: db.getGlobalStrategy(),
+          globalStrategies: resolveStrategies(db.getGlobalStrategy()),
           strategies: [
             {
               id: 'MOD-01E',
@@ -174,7 +178,8 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
             },
             {id:'EMA-PULLBACK',name:'EMA Trend Pullback Limit',description:'Choose 1H / 15m / 5m or 4H / 1H / 15m. Trend → EMA-zone pullback → confirmation → confirmation-candle retracement limit.',config:runner.emaCfg()},
             {id:'TURTLE-SOUP',name:'Turtle Soup-inspired Range Reversal',description:'Prior completed range → sweep and reclaim close → boundary retest limit. TP1 midpoint; TP2 opposite range edge. Intraday adaptation, not the original 20-day system.',config:runner.turtleCfg()},
-          ],
+            ...PACK_DEFINITIONS.map(d=>({id:d.id,name:d.name,description:d.description,config:runner.packCfg(d.id),validationStatus:'experimental — market win rate unverified'})),
+          ].map(s=>({...s,recommended:STRATEGY_RECOMMENDATIONS[s.id as keyof typeof STRATEGY_RECOMMENDATIONS]})),
         });
       }
 
@@ -187,7 +192,16 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
 
       if (path === '/api/strategies/settings' && req.method === 'POST') {
         const b = await readBody(req);
-        if (b.globalStrategy && !validSelection(b.globalStrategy)) return json(res, 400, { error: 'Unsupported strategy selection' });
+        let selection:StrategySelection|undefined;
+        try {
+          if(b.globalStrategies!==undefined){
+            if(b.globalStrategy!==undefined)throw Error('Send globalStrategies or globalStrategy, not both');
+            selection=encodeStrategies(b.globalStrategies);
+          }else if(b.globalStrategy!==undefined){
+            if(!validSelection(b.globalStrategy))throw Error('Unsupported strategy selection');
+            selection=b.globalStrategy;
+          }
+        }catch(e){return json(res,400,{error:(e as Error).message})}
         let validated,validatedEma,validatedTurtle;
         try {
           if(b.mod01e)validated = validateMod01eConfig({ ...runner.mod01eCfg(''), ...b.mod01e });
@@ -198,9 +212,9 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
         if(validated){db.setStrategyCfg('MOD-01E', validated);runner.setKillzone(validated.useKillzone)}
         if(validatedEma)db.setStrategyCfg('EMA-PULLBACK',validatedEma);
         if(validatedTurtle)db.setStrategyCfg('TURTLE-SOUP',validatedTurtle);
-        if(b.globalStrategy) {
-          db.setGlobalStrategy(b.globalStrategy);
-          if(b.applyToWatchlist===true)for(const w of db.listWatch())db.updateWatch(w.symbol,{strategy:b.globalStrategy});
+        if(selection) {
+          db.setGlobalStrategy(selection);
+          if(b.applyToWatchlist===true)for(const w of db.listWatch())db.updateWatch(w.symbol,{strategy:selection});
         }
         runner.reEvaluateAll();
         push('state_full', snapshot());
@@ -211,9 +225,9 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
       if (stratMatch && req.method === 'POST') {
         const id = stratMatch[1].toUpperCase() as any;
         const b = await readBody(req);
-        if (!['MOD-01E','EMA-PULLBACK','TURTLE-SOUP'].includes(id)) return json(res, 400, { error: 'Unsupported strategy' });
+        if (!isActiveStrategy(id)) return json(res, 400, { error: 'Unsupported strategy' });
         let validated;
-        try { validated = id==='TURTLE-SOUP'?validateTurtleConfig({...runner.turtleCfg(),...b}):id==='EMA-PULLBACK'?validateEmaConfig({...runner.emaCfg(),...b}):validateMod01eConfig({ ...runner.mod01eCfg(''), ...b }); }
+        try { validated = isPackStrategy(id)?validatePackConfig(id,{...runner.packCfg(id),...b}):id==='TURTLE-SOUP'?validateTurtleConfig({...runner.turtleCfg(),...b}):id==='EMA-PULLBACK'?validateEmaConfig({...runner.emaCfg(),...b}):validateMod01eConfig({ ...runner.mod01eCfg(''), ...b }); }
         catch (e) { return json(res, 400, { error: (e as Error).message }); }
         db.setStrategyCfg(id, validated);
         if('useKillzone' in validated)runner.setKillzone(validated.useKillzone);

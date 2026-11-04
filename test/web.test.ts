@@ -7,6 +7,8 @@ import { startWeb } from '../src/web/server.js';
 import { Db } from '../src/db/index.js';
 import { Runner } from '../src/engine/runner.js';
 import { loadConfig } from '../src/config.js';
+import { ACTIVE_STRATEGIES,encodeStrategies,resolveStrategies } from '../src/types.js';
+import { PACK_DEFINITIONS } from '../src/strategy/strategyPack.js';
 
 describe('Limit Desk HTTP integration',()=>{
  it('serves the new dashboard, enforces authentication and validates strategy settings',async()=>{
@@ -24,7 +26,8 @@ describe('Limit Desk HTTP integration',()=>{
    expect(html).toContain('Mochbot · Limit Desk');
    for(const path of ['/desk.js','/desk.css','/legacy.html','/api/health','/api/orders']) expect((await fetch(url+path,{headers})).status).toBe(200);
    const strategies=await(await fetch(url+'/api/strategies',{headers})).json() as any;
-   expect(strategies.strategies.map((s:any)=>s.id)).toEqual(['MOD-01E','EMA-PULLBACK','TURTLE-SOUP']);
+   expect(strategies.strategies.map((s:any)=>s.id)).toEqual(ACTIVE_STRATEGIES);
+   for(const s of strategies.strategies){expect(s.recommended.summary).toBeTruthy();expect(Object.keys(s.recommended.config)).toEqual(Object.keys(s.config));}
    expect((await fetch(url+'/api/strategies/settings',{method:'POST',headers,body:JSON.stringify({mod01e:{entryFib:2}})})).status).toBe(400);
    expect((await fetch(url+'/api/strategies/settings',{method:'POST',headers,body:JSON.stringify({mod01e:{entryFib:.5,useKillzone:false}})})).status).toBe(200);
    expect(runner.mod01eCfg('').entryFib).toBe(.5);
@@ -80,7 +83,7 @@ describe('Limit Desk HTTP integration',()=>{
    expect((await fetch(url+'/api/watchlist/BTC_USDT',{method:'PATCH',headers,body:JSON.stringify({strategy:'INVALID'})})).status).toBe(400);
    snapshot=await(await fetch(url+'/api/state',{headers})).json() as any;
    expect(snapshot.watchlist[0].setups[0].strategyId).toBe('EMA-PULLBACK');
-   expect(snapshot.strategyPerformance.map((s:any)=>s.id)).toEqual(['MOD-01E','EMA-PULLBACK','TURTLE-SOUP']);
+   expect(snapshot.strategyPerformance.map((s:any)=>s.id)).toEqual(ACTIVE_STRATEGIES);
    expect((await fetch(url+'/api/settings',{method:'POST',headers,body:JSON.stringify({max_open_risk:-1})})).status).toBe(400);
    expect((await fetch(url+'/api/strategies/EMA-PULLBACK/settings',{method:'POST',headers,body:JSON.stringify({timeframePreset:'4H/1H/15m'})})).status).toBe(200);
    expect(runner.emaCfg().timeframePreset).toBe('4H/1H/15m');
@@ -98,9 +101,34 @@ describe('Limit Desk HTTP integration',()=>{
    expect(runner.turtleCfg().lookbackBars).toBe(25);expect(runner.turtleCfg().timeframePreset).toBe('4H/15m');
    expect((await fetch(url+'/api/strategies/TURTLE-SOUP/settings',{method:'POST',headers,body:JSON.stringify({lookbackBars:0})})).status).toBe(400);
    expect((await fetch(url+'/api/strategies/settings',{method:'POST',headers,body:JSON.stringify({globalStrategy:'ALL',applyToWatchlist:true})})).status).toBe(200);
-   expect(db.getGlobalStrategy()).toBe('ALL');expect(runner.strategyStates.get('BTC_USDT')?.size).toBe(3);
+   expect(db.getGlobalStrategy()).toBe('ALL');expect(runner.strategyStates.get('BTC_USDT')?.size).toBe(8);
    expect((await fetch(url+'/api/watchlist/BTC_USDT',{method:'PATCH',headers,body:JSON.stringify({strategy:'TURTLE-SOUP'})})).status).toBe(200);
    expect(db.listWatch()[0].strategy).toBe('TURTLE-SOUP');
+   for(const d of PACK_DEFINITIONS){
+    const route=url+`/api/strategies/${d.id}/settings`;
+    expect((await fetch(route,{method:'POST',headers,body:JSON.stringify({orderExpiry:8,timeframePreset:'4H/15m'})})).status).toBe(200);
+    expect(runner.packCfg(d.id).orderExpiry).toBe(8);expect(runner.packCfg(d.id).timeframePreset).toBe('4H/15m');
+    expect((await fetch(route,{method:'POST',headers,body:JSON.stringify({rrTP2:0})})).status).toBe(400);
+    expect(runner.packCfg(d.id).rrTP2).toBe(d.defaults.rrTP2);
+    expect((await fetch(url+'/api/strategies/settings',{method:'POST',headers,body:JSON.stringify({globalStrategy:d.id,applyToWatchlist:true})})).status).toBe(200);
+    expect(db.getGlobalStrategy()).toBe(d.id);expect(db.listWatch()[0].strategy).toBe(d.id);
+    snapshot=await(await fetch(url+'/api/state',{headers})).json() as any;
+    expect(snapshot.watchlist[0].setups.map((s:any)=>s.strategyId)).toEqual([d.id]);
+   }
+   const chosen=['EMA-PULLBACK','TURTLE-SOUP','RSI-DIVERGENCE'];
+   expect((await fetch(url+'/api/strategies/settings',{method:'POST',headers,body:JSON.stringify({globalStrategies:chosen,applyToWatchlist:true})})).status).toBe(200);
+   const saved=db.getGlobalStrategy();expect(saved).toBe(encodeStrategies(chosen));expect(db.listWatch()[0].strategy).toBe(saved);
+   snapshot=await(await fetch(url+'/api/state',{headers})).json() as any;
+   expect(snapshot.globalStrategies).toEqual(chosen);expect(snapshot.watchlist[0].setups.map((s:any)=>s.strategyId)).toEqual(chosen);
+   for(const invalid of [[],['UNKNOWN'],['EMA-PULLBACK','EMA-PULLBACK'],'ALL',null]){
+    expect((await fetch(url+'/api/strategies/settings',{method:'POST',headers,body:JSON.stringify({globalStrategies:invalid,mod01e:{entryFib:.382},applyToWatchlist:true})})).status).toBe(400);
+    expect(db.getGlobalStrategy()).toBe(saved);expect(runner.mod01eCfg('').entryFib).toBe(.5);
+   }
+   expect((await fetch(url+'/api/strategies/settings',{method:'POST',headers,body:JSON.stringify({globalStrategies:chosen,globalStrategy:'ALL'})})).status).toBe(400);
+   expect((await fetch(url+'/api/strategies/settings',{method:'POST',headers,body:JSON.stringify({globalStrategies:['MOD-01E'],applyToWatchlist:false})})).status).toBe(200);
+   expect(db.getGlobalStrategy()).toBe('MOD-01E');expect(db.listWatch()[0].strategy).toBe(saved);
+   expect((await fetch(url+'/api/watchlist/BTC_USDT',{method:'PATCH',headers,body:JSON.stringify({strategy:encodeStrategies(['VWAP-RECLAIM','BOLLINGER-RANGE'])})})).status).toBe(200);
+   expect(resolveStrategies(db.listWatch()[0].strategy)).toEqual(['VWAP-RECLAIM','BOLLINGER-RANGE']);
   }finally{runner.stop();server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));db.close()}
  });
  it('retains SQLite order plans after reopening the database',()=>{
@@ -108,8 +136,12 @@ describe('Limit Desk HTTP integration',()=>{
   const path=join(dir,'test.db');
   try{
    let db=new Db(path);
+   const selection=encodeStrategies(['VWAP-RECLAIM','BOLLINGER-RANGE']);db.setGlobalStrategy(selection);db.addWatch('BTC_USDT');
+   db.setStrategyCfg('VWAP-RECLAIM',{orderExpiry:8,timeframePreset:'4H/15m'});
    db.saveLimitOrder({symbol:'BTC_USDT',setupId:'01E:LONG:123',orderStatus:'PENDING',ts:100,entry:100,sl:99,tp1:103,tp2:105,expiresAt:500} as any);
    db.close();db=new Db(path);
+   expect(db.getGlobalStrategy()).toBe(selection);expect(db.listWatch()[0].strategy).toBe(selection);
+   expect(db.getStrategyCfg('VWAP-RECLAIM')).toEqual({orderExpiry:8,timeframePreset:'4H/15m'});
    expect(db.listLimitOrders()[0].status).toBe('PENDING');
    db.reconcileLimitOrders({symbol:'BTC_USDT',setupId:null,ts:600} as any);
    expect(db.listLimitOrders()[0].status).toBe('EXPIRED');
