@@ -169,7 +169,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
               description: '1H Bias + 15m Alignment + 15m CHoCH Dealing Range → 5m Limit Retest at 0.618 Fib OTE.',
               config: runner.mod01eCfg(''),
             },
-            {id:'EMA-PULLBACK',name:'EMA Trend Pullback Limit',description:'1H EMA trend → 15m EMA-zone pullback → 5m confirmation → confirmation-candle retracement limit.',config:runner.emaCfg()},
+            {id:'EMA-PULLBACK',name:'EMA Trend Pullback Limit',description:'Choose 1H / 15m / 5m or 4H / 1H / 15m. Trend → EMA-zone pullback → confirmation → confirmation-candle retracement limit.',config:runner.emaCfg()},
           ],
         });
       }

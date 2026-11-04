@@ -4,7 +4,14 @@ This version supports MOD-01E and EMA Trend Pullback Limit (`EMA-PULLBACK`). Exi
 
 ## EMA Pullback Limit
 
-The default long sequence requires a completed 1H close above EMA 20, with EMA 20 above EMA 50; reverse this for shorts. A completed 15m candle must intersect its own EMA 20–50 zone. A subsequent completed 5m candle must close above the preceding 5m high (below the preceding low for shorts). Confirmation must occur within six 5m bars of the pullback by default.
+Select one of two timeframe presets in Settings → Strategy settings → EMA Pullback Limit → EMA timeframe preset:
+
+- `1H/15m/5m` (default): 1H trend, 15m pullback, 5m confirmation, default 30-minute order expiry.
+- `4H/1H/15m`: 4H trend, 1H pullback, 15m confirmation, default 90-minute order expiry.
+
+Both default to a 50% confirmation-candle retracement. EMA lengths, target multiples, and dollar-risk settings are shared. Expiry and confirmation-window counts are measured in the selected confirmation bars. The slower preset uses dedicated 4H and hourly backfills to warm its EMAs beyond the rolling minute history. Changing presets invalidates previous pending EMA plans during re-evaluation; active simulated trades retain their entry, stop, targets and sizing. Notes, setup identity and chart labels carry the selected preset. Existing configurations without a saved preset keep `1H/15m/5m`.
+
+For the default preset, the long sequence requires a completed 1H close above EMA 20, with EMA 20 above EMA 50; reverse this for shorts. A completed 15m candle must intersect its own EMA 20–50 zone. A subsequent completed 5m candle must close above the preceding 5m high (below the preceding low for shorts). Confirmation must occur within six 5m bars of the pullback by default. The slower preset applies the same rules to 4H, 1H and 15m respectively.
 
 The default limit is 50% of that confirmation candle's full high-to-low range, on the retracement side of its close. The stop is beyond the pullback/confirmation extreme plus 0.2 × 5m ATR(14). Targets default to 2R / 3R. The order starts after confirmation closes, expires after six further 5m bars (30 minutes), and cancels on a neutral/reversed 1H EMA trend or a breached stop. Only subsequent completed one-minute data can register a simulated touch. A minute that touches both the entry and stop is invalidated conservatively. EMA does not use MOD-01E's UTC session filter.
 

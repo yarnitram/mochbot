@@ -6,7 +6,7 @@ import type { Db } from '../db/index.js';
 import { CandleStore } from '../data/candleStore.js';
 import type { Candle, Setup, StrategyCfg, ActiveStrategyId, StrategySelection, EmaPullbackCfg } from '../types.js';
 import { DEFAULT_EMA_CFG } from '../types.js';
-import { evaluateEmaPullback } from '../strategy/emaPullback.js';
+import { evaluateEmaPullback,emaTimeframes } from '../strategy/emaPullback.js';
 import { assessSharedRisk } from './riskGate.js';
 import { evaluateMod01e } from '../strategy/mod01e.js';
 import { aggregate } from '../strategy/indicators.js';
@@ -553,7 +553,8 @@ export class Runner extends EventEmitter {
     const ids:ActiveStrategyId[]=selection==='BOTH'?['MOD-01E','EMA-PULLBACK']:[selection as ActiveStrategyId];
     for(const order of this.d.db.listPendingLimitOrders().filter(o=>o.symbol===symbol)) {
       const plan=JSON.parse(order.payload) as Setup;
-      if(!ids.includes(plan.strategyId as ActiveStrategyId))this.d.db.saveLimitOrder({...plan,orderStatus:'INVALIDATED',ts:Math.floor(Date.now()/1000),reason:'Strategy disabled for this coin'});
+      const presetChanged=plan.strategyId==='EMA-PULLBACK'&&(plan.emaTimeframes?.preset??'1H/15m/5m')!==this.emaCfg().timeframePreset;
+      if(!ids.includes(plan.strategyId as ActiveStrategyId)||presetChanged)this.d.db.saveLimitOrder({...plan,orderStatus:'INVALIDATED',ts:Math.floor(Date.now()/1000),reason:presetChanged?'EMA timeframe preset changed':'Strategy disabled for this coin'});
     }
     const map=new Map<ActiveStrategyId,Setup>();
     for(const id of ids) map.set(id,this.evaluateStrategy(symbol,id));
@@ -570,8 +571,10 @@ export class Runner extends EventEmitter {
 
     const cfg = this.mod01eCfg(symbol);
     const cBias = cfg.biasTfMinutes === 240 ? this.htf4h.get(symbol) : this.htf1h.get(symbol);
+    const emaCfg=this.emaCfg(),emaTf=emaTimeframes(emaCfg);
     const setup = id==='EMA-PULLBACK'
-      ? evaluateEmaPullback(symbol,closed,this.store.forming(symbol),this.htf1h.get(symbol),this.emaCfg())
+      ? evaluateEmaPullback(symbol,closed,this.store.forming(symbol),emaTf.trendMinutes===240?this.htf4h.get(symbol):this.htf1h.get(symbol),emaCfg,
+          emaTf.pullbackMinutes===60?this.htf1h.get(symbol):undefined)
       : evaluateMod01e(symbol, closed, this.store.forming(symbol), cBias, cfg);
     if (this.feedErrors.has(symbol)) setup.reason = `History error: ${this.feedErrors.get(symbol)}`;
     const newest = this.store.forming(symbol) ?? closed.at(-1);
@@ -640,9 +643,10 @@ export class Runner extends EventEmitter {
         let htfCandles: Candle[];
         let ltfCandles: Candle[];
         if (setup.strategyId === 'EMA-PULLBACK') {
-          htfCandles=this.htf1h.get(setup.symbol)??aggregate(ltf,60);
-          ltfCandles=aggregate(ltf,5);
-          setup.ltfMinutes=5;
+          const timeframes=setup.emaTimeframes??emaTimeframes(this.emaCfg());
+          htfCandles=(timeframes.trendMinutes===240?this.htf4h.get(setup.symbol):this.htf1h.get(setup.symbol))??aggregate(ltf,timeframes.trendMinutes);
+          ltfCandles=aggregate(ltf,timeframes.confirmationMinutes);
+          setup.ltfMinutes=timeframes.confirmationMinutes;
         } else if (setup.strategyId === 'MOD-01D') {
           htfCandles = this.htf1h.get(setup.symbol) ?? aggregate(ltf, 60);
           ltfCandles = aggregate(ltf, 5); // 5m execution

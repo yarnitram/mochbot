@@ -69,4 +69,9 @@ describe('Chart Renderer', () => {
     expect(svg).toContain('EMA PULLBACK');expect(svg).toContain('TP1 (1:2)');expect(svg).toContain('TP2 (1:3)');
     expect(svg).not.toContain('TP2 (1:5)');
   });
+  it('labels slow EMA charts with 4H trend and 15m execution',()=>{
+    const svg=generateChartSvg('BTC_USDT',htf,ltf,{...setup,strategyId:'EMA-PULLBACK',emaTimeframes:{trendMinutes:240,pullbackMinutes:60,confirmationMinutes:15,preset:'4H/1H/15m'}});
+    expect(svg).toContain('4H EMA Trend Context');expect(svg).toContain('15m Execution Timeframe');
+    expect(svg).not.toContain('>5m Execution Timeframe');
+  });
 });

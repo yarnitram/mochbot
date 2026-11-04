@@ -82,6 +82,11 @@ describe('Limit Desk HTTP integration',()=>{
    expect(snapshot.watchlist[0].setups[0].strategyId).toBe('EMA-PULLBACK');
    expect(snapshot.strategyPerformance.map((s:any)=>s.id)).toEqual(['MOD-01E','EMA-PULLBACK']);
    expect((await fetch(url+'/api/settings',{method:'POST',headers,body:JSON.stringify({max_open_risk:-1})})).status).toBe(400);
+   expect((await fetch(url+'/api/strategies/EMA-PULLBACK/settings',{method:'POST',headers,body:JSON.stringify({timeframePreset:'4H/1H/15m'})})).status).toBe(200);
+   expect(runner.emaCfg().timeframePreset).toBe('4H/1H/15m');
+   expect((await fetch(url+'/api/strategies/EMA-PULLBACK/settings',{method:'POST',headers,body:JSON.stringify({timeframePreset:'1D/4H/1H'})})).status).toBe(400);
+   expect((await fetch(url+'/api/strategies/EMA-PULLBACK/settings',{method:'POST',headers,body:JSON.stringify({timeframePreset:'1H/15m/5m'})})).status).toBe(200);
+   expect(runner.emaCfg().timeframePreset).toBe('1H/15m/5m');
   }finally{runner.stop();server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));db.close()}
  });
  it('retains SQLite order plans after reopening the database',()=>{

@@ -17,6 +17,7 @@ export type StrategyId = 'MOD-01' | 'MOD-01D' | ActiveStrategyId;
 export type StrategySelection = StrategyId | 'BOTH';
 
 export interface EmaPullbackCfg {
+  timeframePreset: '1H/15m/5m' | '4H/1H/15m';
   fastLength: number;
   slowLength: number;
   pullbackWindowBars: number;
@@ -27,6 +28,7 @@ export interface EmaPullbackCfg {
   rrTP2: number;
 }
 export const DEFAULT_EMA_CFG: EmaPullbackCfg = {
+  timeframePreset:'1H/15m/5m',
   fastLength:20, slowLength:50, pullbackWindowBars:6, orderExpiry:6,
   entryRatio:.5, stopBufferAtr:.2, rrTP1:2, rrTP2:3,
 };
@@ -210,6 +212,7 @@ export interface PositionSizing {
 }
 
 export interface Setup {
+  emaTimeframes?: {trendMinutes:number;pullbackMinutes:number;confirmationMinutes:number;preset:EmaPullbackCfg['timeframePreset']};
   limitContext?: LimitContext;
   reason?: string;
   orderStatus?: 'PENDING' | 'TOUCHED' | 'EXPIRED' | 'INVALIDATED' | 'BLOCKED';

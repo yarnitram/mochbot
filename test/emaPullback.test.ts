@@ -1,14 +1,50 @@
 import {describe,it,expect,vi} from 'vitest';
 import {evaluateEmaPullback,validateEmaConfig} from '../src/strategy/emaPullback.js';
-import {ema} from '../src/strategy/indicators.js';
+import {ema,aggregateClosed} from '../src/strategy/indicators.js';
 import {DEFAULT_EMA_CFG} from '../src/types.js';
-import {emaScenario,T0} from './fixtures.js';
+import {emaScenario,slowEmaScenario,T0} from './fixtures.js';
 import {Db} from '../src/db/index.js';
 import {Runner} from '../src/engine/runner.js';
 import {loadConfig} from '../src/config.js';
 import {formatAlert} from '../src/notify/format.js';
 
 describe('EMA pullback chronological sequence',()=>{
+ it('uses the slower preset for 4H trend, 1H pullback, 15m confirmation and 90-minute expiry',()=>{
+  const f=slowEmaScenario(),cfg={...DEFAULT_EMA_CFG,timeframePreset:'4H/1H/15m' as const};
+  const pullbacks=aggregateClosed(f.candles,60);
+  const before=evaluateEmaPullback('X',f.candles.slice(0,3674),f.candles[3674],f.bias,cfg,pullbacks);
+  expect(before.stage).toBe('WATCH');
+  const pending=evaluateEmaPullback('X',f.candles.slice(0,3675),f.candles[3675],f.bias,cfg,pullbacks);
+  expect(pending.stage).toBe('ARMED');expect(pending.entry).toBe(111);
+  expect(pending.ltfMinutes).toBe(15);expect(pending.expiresAt!-pending.ts).toBe(90*60);
+  expect(pending.orderNote).toContain('4H EMA');expect(pending.orderNote).toContain('1H EMA-zone pullback → 15m close');
+  expect(pending.orderNote).toContain('6 × 15m bars (90 minutes)');
+  const touch=evaluateEmaPullback('X',f.candles,null,f.bias,cfg,pullbacks);
+  expect(touch.stage).toBe('ENTRY_READY');expect(touch.setupId).toBe(pending.setupId);
+  expect(touch.emaTimeframes?.trendMinutes).toBe(240);
+  const future=[...f.bias,{t:f.candles.at(-1)!.t+3600,o:1,h:2,l:.5,c:1,v:1}];
+  expect(evaluateEmaPullback('X',f.candles,null,future,cfg,pullbacks).setupId).toBe(touch.setupId);
+ });
+ it('runs the slower preset using HTF backfills despite the 1500-minute rolling buffer',async()=>{
+  const f=slowEmaScenario(),time=f.candles[3675].t;
+  const clock=vi.spyOn(Date,'now').mockReturnValue(time*1000),db=new Db(':memory:');
+  db.setGlobalStrategy('EMA-PULLBACK');db.addWatch('SLOW_USDT');
+  db.setStrategyCfg('EMA-PULLBACK',{...DEFAULT_EMA_CFG,timeframePreset:'4H/1H/15m'});
+  const fast=emaScenario();
+  const previous=evaluateEmaPullback('SLOW_USDT',fast.candles.slice(0,920),fast.candles[920],fast.bias);
+  db.saveLimitOrder({...previous,expiresAt:time+600});
+  const runner=new Runner({cfg:loadConfig({PAPER_MODE:'true',DB_PATH:':memory:'}),db,feed:{subscribe(){},unsubscribe(){}},
+    fetchKlines:async(_s,_n,interval)=>interval==='Hour4'?f.bias:interval==='Min60'?aggregateClosed(f.candles,60):f.candles.slice(0,3675),
+    fetchContracts:async()=>[],notifiers:[],log:()=>{}});
+  try{
+   await runner.start();
+   expect(runner.store.closed('SLOW_USDT')).toHaveLength(1500);
+   expect(runner.states.get('SLOW_USDT')?.stage).toBe('ARMED');
+   expect(runner.states.get('SLOW_USDT')?.emaTimeframes?.preset).toBe('4H/1H/15m');
+   expect(db.listLimitOrders().find(o=>o.setup_id===previous.setupId)?.status).toBe('INVALIDATED');
+   expect(db.listPendingLimitOrders()).toHaveLength(1);
+  }finally{runner.stop();db.close();clock.mockRestore()}
+ });
  it('requires enough completed EMA history and ignores a forming confirmation candle',()=>{
   const f=emaScenario();
   expect(evaluateEmaPullback('X',f.candles.slice(0,200),null,f.bias).stage).toBe('IDLE');
@@ -53,6 +89,7 @@ describe('EMA pullback chronological sequence',()=>{
   expect(()=>validateEmaConfig({fastLength:50,slowLength:20})).toThrow();
   expect(()=>validateEmaConfig({entryRatio:1})).toThrow();
   expect(()=>validateEmaConfig({orderExpiry:0})).toThrow();
+  expect(()=>validateEmaConfig({timeframePreset:'1D/4H/1H' as any})).toThrow();
   expect(validateEmaConfig({})).toEqual(DEFAULT_EMA_CFG);
  });
  it('runs both strategies, preserves selection at startup, and tracks EMA separately',async()=>{

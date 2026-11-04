@@ -38,6 +38,14 @@ export function emaScenario() {
   return {candles,bias,pendingCount:920,touchedCount:925};
 }
 
+export function slowEmaScenario() {
+  const fast=emaScenario(),candles:Candle[]=[];
+  for(let i=0;i<915;i++)for(let j=0;j<4;j++)candles.push({...fast.candles[i],t:T0+(i*4+j)*60});
+  for(let i=915;i<925;i++)for(let j=0;j<3;j++)candles.push({...fast.candles[i],t:T0+(3660+(i-915)*3+j)*60});
+  const bias=fast.bias.map(c=>({...c,t:T0+(c.t-T0)*4}));
+  return {candles,bias,pendingCount:3675,touchedCount:3690};
+}
+
 export interface Bar15 { o: number; h: number; l: number; c: number }
 
 /** Expand a 15m OHLC bar into 15 one-minute candles that aggregate back to exactly that OHLC. */
