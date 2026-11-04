@@ -36,7 +36,7 @@ function renderPanelCandles(
   candles: Candle[],
   layout: PanelLayout,
   positionBox?: PositionBoxConfig | null,
-  zone?: { top: number; bottom: number; isDemand: boolean } | null,
+  zone?: { top: number; bottom: number; isDemand: boolean; label?:string } | null,
   fallbackLevels: { price: number; color: string; label: string; dash?: string }[] = [],
 ): string {
   if (!candles.length) return '';
@@ -160,24 +160,26 @@ function renderPanelCandles(
   if (zone) {
     const zTopY = Math.min(getY(zone.top), getY(zone.bottom));
     const zColor = zone.isDemand ? '#10b981' : '#f43f5e';
-    const zLabel = zone.isDemand ? 'DEMAND POI' : 'SUPPLY POI';
+    const zLabel = zone.label ?? (zone.isDemand ? 'DEMAND POI' : 'SUPPLY POI');
     svg += `<rect x="${x + 6}" y="${(zTopY + 2).toFixed(1)}" width="84" height="15" rx="3" fill="#0d1117" opacity="0.92" stroke="${zColor}" stroke-width="0.8"/>`;
     svg += `<text x="${x + 48}" y="${(zTopY + 13).toFixed(1)}" fill="${zColor}" font-size="9" font-weight="bold" text-anchor="middle" font-family="'DejaVu Sans', sans-serif">${zLabel}</text>`;
   }
 
   // --- TRADINGVIEW POSITION TOOL OVERLAYS & BADGES (Layer 5: Solid lines & crisp labels) ---
   if (hasPosBox && positionBox) {
+    const initialRisk=Math.abs(positionBox.entry-positionBox.sl);
+    const rr=(target:number|null|undefined)=>target&&initialRisk>0?Number((Math.abs(target-positionBox.entry)/initialRisk).toFixed(2)):'-';
     // 1. Target TP2 Border & Badge
     svg += `<line x1="${boxX}" y1="${tp2Y.toFixed(1)}" x2="${x + chartW}" y2="${tp2Y.toFixed(1)}" stroke="#22c55e" stroke-width="2"/>`;
     const tp2BadgeY = isLong ? Math.min(y + h - 18, Math.max(y + 2, tp2Y + 4)) : Math.max(y + 2, tp2Y - 18);
     svg += `<rect x="${boxX + 6}" y="${tp2BadgeY.toFixed(1)}" width="118" height="16" rx="3" fill="#22c55e"/>`;
-    svg += `<text x="${boxX + 11}" y="${(tp2BadgeY + 12).toFixed(1)}" fill="#0d1117" font-size="9.5" font-weight="bold" font-family="'DejaVu Sans', sans-serif">TP2 (1:5) · TARGET</text>`;
+    svg += `<text x="${boxX + 11}" y="${(tp2BadgeY + 12).toFixed(1)}" fill="#0d1117" font-size="9.5" font-weight="bold" font-family="'DejaVu Sans', sans-serif">TP2 (1:${rr(positionBox.tp2)}) · TARGET</text>`;
 
     // 2. TP1 Milestone Line & Badge
     if (tp1Y !== null) {
       svg += `<line x1="${x}" y1="${tp1Y.toFixed(1)}" x2="${x + chartW}" y2="${tp1Y.toFixed(1)}" stroke="#4ade80" stroke-width="1.2" stroke-dasharray="4,3"/>`;
       svg += `<rect x="${boxX + 6}" y="${(tp1Y - 14).toFixed(1)}" width="88" height="14" rx="3" fill="#0d1117" opacity="0.92" stroke="#4ade80" stroke-width="0.8"/>`;
-      svg += `<text x="${boxX + 10}" y="${(tp1Y - 3).toFixed(1)}" fill="#4ade80" font-size="9" font-weight="bold" font-family="'DejaVu Sans', sans-serif">TP1 (1:3)</text>`;
+      svg += `<text x="${boxX + 10}" y="${(tp1Y - 3).toFixed(1)}" fill="#4ade80" font-size="9" font-weight="bold" font-family="'DejaVu Sans', sans-serif">TP1 (1:${rr(positionBox.tp1)})</text>`;
     }
 
     // 3. Stop Loss Border & Badge
@@ -193,7 +195,7 @@ function renderPanelCandles(
 
     // 5. TradingView R:R Badge
     svg += `<rect x="${boxX + boxW - 82}" y="${(entryY - 8).toFixed(1)}" width="76" height="16" rx="3" fill="#1c2128" stroke="#38bdf8" stroke-width="1"/>`;
-    svg += `<text x="${boxX + boxW - 44}" y="${(entryY + 4).toFixed(1)}" fill="#38bdf8" font-size="9" font-weight="bold" text-anchor="middle" font-family="'DejaVu Sans Mono', monospace">R:R 1:5.0</text>`;
+    svg += `<text x="${boxX + boxW - 44}" y="${(entryY + 4).toFixed(1)}" fill="#38bdf8" font-size="9" font-weight="bold" text-anchor="middle" font-family="'DejaVu Sans Mono', monospace">R:R 1:${rr(positionBox.tp2)}</text>`;
 
     // 6. Right Price Axis Badges
     const axisBadges = [
@@ -259,7 +261,7 @@ export function generateChartSvg(symbol: string, htfCandles: Candle[], ltfCandle
   const htfSlice = htfCandles.slice(-50);
   const ltfSlice = ltfCandles.slice(-60);
 
-  const zoneInfo = setup.zone ? { top: setup.zone.top, bottom: setup.zone.bottom, isDemand: isLong } : null;
+  const zoneInfo = setup.zone ? { top: setup.zone.top, bottom: setup.zone.bottom, isDemand: isLong, label:setup.strategyId==='EMA-PULLBACK'?'EMA PULLBACK':undefined } : null;
 
   const positionBox: PositionBoxConfig | null = (setup.entry && setup.sl) ? {
     direction: isLong ? 'LONG' : 'SHORT',
@@ -270,8 +272,8 @@ export function generateChartSvg(symbol: string, htfCandles: Candle[], ltfCandle
   } : null;
 
   const dateStr = new Date(setup.ts * 1000).toUTCString();
-  const htfTitle = setup.strategyId === 'MOD-01D' ? '1H Higher Timeframe (POI Context)' : setup.strategyId === 'MOD-01E' ? '1H Bias & 15m Dealing Range' : '15m Higher Timeframe (POI Context)';
-  const ltfTitle = (setup.strategyId === 'MOD-01D' || setup.strategyId === 'MOD-01E') ? '5m Execution Timeframe (TradingView Position & Levels)' : `${setup.ltfMinutes ?? 3}m Execution Timeframe (TradingView Position & Levels)`;
+  const htfTitle = setup.strategyId === 'EMA-PULLBACK' ? '1H EMA Trend Context' : setup.strategyId === 'MOD-01D' ? '1H Higher Timeframe (POI Context)' : setup.strategyId === 'MOD-01E' ? '1H Bias & 15m Dealing Range' : '15m Higher Timeframe (POI Context)';
+  const ltfTitle = ['MOD-01D','MOD-01E','EMA-PULLBACK'].includes(setup.strategyId??'') ? '5m Execution Timeframe (TradingView Position & Levels)' : `${setup.ltfMinutes ?? 3}m Execution Timeframe (TradingView Position & Levels)`;
 
   return `
 <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="background:#0d1117;">

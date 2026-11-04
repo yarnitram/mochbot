@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import type { DatabaseSync as DatabaseSyncT } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { Setup, StrategyId } from '../types.js';
+import type { Setup, StrategyId, StrategySelection } from '../types.js';
 import type { MochexConfig } from '../config.js';
 
 export interface WatchRow {
@@ -11,7 +11,7 @@ export interface WatchRow {
   sensitivity: string | null;
   watch_distance: number | null;
   is_auto: number; // 0 = manual/pinned, 1 = auto-scanned
-  strategy: StrategyId;
+  strategy: StrategySelection;
   added_at: number;
 }
 
@@ -84,7 +84,7 @@ export interface CoinStats {
   isWatching: boolean;
   isAuto: boolean;
   autoType?: number;
-  strategy?: StrategyId;
+  strategy?: StrategySelection;
 }
 
 // loaded via require so bundlers/test runners that do not know node:sqlite do not choke on it
@@ -203,7 +203,7 @@ export class Db {
     return this.db.prepare("SELECT symbol, killzone, sensitivity, watch_distance, COALESCE(is_auto, 0) as is_auto, COALESCE(strategy, 'MOD-01') as strategy, added_at FROM watchlist ORDER BY is_auto ASC, symbol ASC").all() as unknown as WatchRow[];
   }
 
-  addWatch(symbol: string, isAuto: boolean | number = false, strategy: StrategyId = 'MOD-01E'): boolean {
+  addWatch(symbol: string, isAuto: boolean | number = false, strategy: StrategySelection = this.getGlobalStrategy()): boolean {
     const existing = this.db.prepare('SELECT symbol, is_auto, strategy FROM watchlist WHERE symbol = ?').get(symbol) as { symbol: string; is_auto: number; strategy: string } | undefined;
     const isAutoVal = typeof isAuto === 'number' ? isAuto : isAuto ? 1 : 0;
     if (existing) {
@@ -266,7 +266,7 @@ export class Db {
       killzone?: boolean | null;
       sensitivity?: string | null;
       watch_distance?: number | null;
-      strategy?: StrategyId;
+      strategy?: StrategySelection;
     }
   ): boolean {
     const cur = this.db.prepare("SELECT symbol, killzone, sensitivity, watch_distance, COALESCE(strategy, 'MOD-01') as strategy FROM watchlist WHERE symbol = ?").get(symbol) as any;
@@ -289,8 +289,9 @@ export class Db {
   reconcileLimitOrders(s: Setup) {
     const rows = this.db.prepare("SELECT * FROM limit_orders WHERE symbol=? AND status='PENDING'").all(s.symbol) as any[];
     for (const row of rows) {
-      if (row.setup_id === s.setupId && s.orderStatus === 'PENDING') continue;
       const previous = JSON.parse(row.payload) as Setup;
+      if (previous.strategyId !== s.strategyId) continue;
+      if (row.setup_id === s.setupId && s.orderStatus === 'PENDING') continue;
       const expired = previous.expiresAt !== undefined && s.ts >= previous.expiresAt;
       this.saveLimitOrder({ ...previous, ts:s.ts, orderStatus:expired?'EXPIRED':'INVALIDATED',
         reason:expired?'Limit deadline passed':'Plan superseded or no longer confirmed in available history' });
@@ -298,6 +299,13 @@ export class Db {
   }
   listLimitOrders(): { setup_id: string; symbol: string; status: string; updated_at: number; payload: string }[] {
     return this.db.prepare('SELECT * FROM limit_orders ORDER BY updated_at DESC LIMIT 250').all() as any;
+  }
+  listPendingLimitOrders(): {setup_id:string;symbol:string;payload:string}[] {
+    return (this.db.prepare("SELECT setup_id,symbol,payload FROM limit_orders WHERE status='PENDING'").all() as any[])
+      .filter(row=>(JSON.parse(row.payload).expiresAt??Infinity)>Date.now()/1000);
+  }
+  isBlockedLimit(symbol:string,id:string):boolean {
+    return !!this.db.prepare("SELECT 1 FROM limit_orders WHERE symbol=? AND setup_id=? AND status IN ('BLOCKED','EXPIRED','INVALIDATED')").get(symbol,id);
   }
   hasTradeSetup(setupId: string): boolean {
     return !!this.db.prepare('SELECT id FROM trades WHERE setup_id=?').get(setupId);
@@ -344,11 +352,12 @@ export class Db {
     this.setSetting('default_margin', String(Math.max(0.1, val)));
   }
 
-  getGlobalStrategy(): StrategyId {
-    return 'MOD-01E';
+  getGlobalStrategy(): StrategySelection {
+    const value=this.getSetting('global_strategy');
+    return value==='EMA-PULLBACK'||value==='BOTH'?value:'MOD-01E';
   }
 
-  setGlobalStrategy(strat: StrategyId): void {
+  setGlobalStrategy(strat: StrategySelection): void {
     this.setSetting('global_strategy', strat);
   }
 
@@ -539,7 +548,7 @@ export class Db {
       )
       .all() as unknown as { symbol: string }[];
 
-    const watchMap = new Map<string, { is_auto: number; strategy: StrategyId }>();
+    const watchMap = new Map<string, { is_auto: number; strategy: StrategySelection }>();
     for (const w of this.listWatch()) {
       watchMap.set(w.symbol, { is_auto: w.is_auto, strategy: w.strategy });
     }

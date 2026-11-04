@@ -20,6 +20,24 @@ export function limitScenario() {
 /** 2024-01-01 00:00:00 UTC */
 export const T0 = 1704067200;
 
+/** Fully completed trend/pullback/confirmation sequence with a later limit touch. */
+export function emaScenario() {
+  const candles:Candle[]=[];
+  for(let i=0;i<60;i++) {
+    const price=100+i*.2;
+    candles.push(...expand15(T0+i*900,{o:price,h:price+.1,l:price-.1,c:price}));
+  }
+  // EMA zone around 107–110. Pullback completes at minute 915.
+  candles.push(...expand15(T0+60*900,{o:111.8,h:112,l:108,c:109}));
+  const append5=(minute:number,o:number,h:number,l:number,c:number)=>{
+    for(let i=0;i<5;i++)candles.push({t:T0+(minute+i)*60,o:i===0?o:c,h:i===2?h:Math.max(o,c),l:i===3?l:Math.min(o,c),c,v:1});
+  };
+  append5(915,109,113,109,112.5); // closes above preceding 5m high; limit 111
+  append5(920,112.5,112.6,110.5,111.2); // subsequent retest
+  const bias=Array.from({length:60},(_,i)=>({t:T0-(60-i)*3600,o:100+i*.2,h:100.1+i*.2,l:99.9+i*.2,c:100+i*.2,v:1}));
+  return {candles,bias,pendingCount:920,touchedCount:925};
+}
+
 export interface Bar15 { o: number; h: number; l: number; c: number }
 
 /** Expand a 15m OHLC bar into 15 one-minute candles that aggregate back to exactly that OHLC. */

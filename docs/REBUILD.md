@@ -1,6 +1,16 @@
 # Mochbot 1.0 — MOD-01E Limit Desk
 
-This version runs one strategy: MOD-01E. Existing SQLite trades, charts and historical strategy attribution remain available. The scanner uses MOD-01E for all watched coins after startup. The previous dashboard is available at `/legacy.html` for journal analytics, manual trade management and MOCHEX controls.
+This version supports MOD-01E and EMA Trend Pullback Limit (`EMA-PULLBACK`). Existing SQLite trades, charts and historical strategy attribution remain available. Choose a default strategy or BOTH in Settings → Strategy selection, optionally applying it to existing coins, or override each coin in Market watch. MOD-01E remains the default. The previous dashboard is available at `/legacy.html` for journal analytics, manual trade management and MOCHEX controls; use the main dashboard to manage the new strategy.
+
+## EMA Pullback Limit
+
+The default long sequence requires a completed 1H close above EMA 20, with EMA 20 above EMA 50; reverse this for shorts. A completed 15m candle must intersect its own EMA 20–50 zone. A subsequent completed 5m candle must close above the preceding 5m high (below the preceding low for shorts). Confirmation must occur within six 5m bars of the pullback by default.
+
+The default limit is 50% of that confirmation candle's full high-to-low range, on the retracement side of its close. The stop is beyond the pullback/confirmation extreme plus 0.2 × 5m ATR(14). Targets default to 2R / 3R. The order starts after confirmation closes, expires after six further 5m bars (30 minutes), and cancels on a neutral/reversed 1H EMA trend or a breached stop. Only subsequent completed one-minute data can register a simulated touch. A minute that touches both the entry and stop is invalidated conservatively. EMA does not use MOD-01E's UTC session filter.
+
+Both mode evaluates both strategies independently using the same market feed. The scanner exposes both statuses, alerts and ledgers carry strategy attribution, and the journal shows separate strategy statistics. There is at most one admitted pending or active trade per coin across strategies; MOD-01E wins a simultaneous evaluation tie. A shared stop-risk budget reserves risk for active trades and unexpired pending limits, defaulting to three times risk per trade (USDT 15 with a USDT 5 risk budget). Adjust it under Capital & alerts. Capital also limits combined entry-margin reservations. Positions already past TP1 reserve zero remaining stop-loss risk after BE, but keep their coin reservation.
+
+Blocked setups are recorded as BLOCKED without sending entry alerts or opening trades, and cannot be admitted retrospectively after their historical touch; a new confirmation is required. Disabling a strategy invalidates its pending plans but retains active trade management and historical records. These calculations model simultaneous stops before fees/slippage and do not account for price gaps or exchange liquidation mechanics. Results require paper/replay validation; no profitability assumption is built into these rules.
 
 ## Sequence
 

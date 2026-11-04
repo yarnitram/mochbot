@@ -3,7 +3,7 @@ import { startWeb } from '../src/web/server.js';
 import { Db } from '../src/db/index.js';
 import { Runner } from '../src/engine/runner.js';
 import { loadConfig } from '../src/config.js';
-import { limitScenario } from '../test/fixtures.js';
+import { limitScenario,emaScenario } from '../test/fixtures.js';
 import { join } from 'node:path';
 const cfg=loadConfig({PORT:process.env.PORT??'8788',DB_PATH:':memory:',PAPER_MODE:'true',USE_KILLZONE:'false'});
 const db=new Db(':memory:');
@@ -19,6 +19,17 @@ for(const [symbol,count] of [['DEMO_PENDING_USDT',1770],['DEMO_TOUCH_USDT',1789]
  for(let t=head.t;t<currentMinute;t+=60)history.push({...head,t,o:head.c,h:head.c,l:head.c});
  runner.store.setHistory(symbol,history);
  runner.store.ingest(symbol,{...head,t:currentMinute,o:head.c,h:head.c,l:head.c});runner.lastTick.set(symbol,Date.now());runner.evaluateSymbol(symbol);
+}
+const emaFixture=emaScenario();
+for(const [symbol,count] of [['DEMO_EMA_PENDING_USDT',920],['DEMO_EMA_TOUCH_USDT',925]] as const){
+ const now=Math.floor(Date.now()/60000)*60;
+ const offset=Math.floor((now-(emaFixture.candles[count]?.t??emaFixture.candles.at(-1)!.t+60))/900)*900;
+ const shift=(c:typeof emaFixture.candles[number])=>({...c,t:c.t+offset});
+ db.addWatch(symbol,false,'EMA-PULLBACK');runner.htf1h.set(symbol,emaFixture.bias.map(shift));
+ const history=emaFixture.candles.slice(0,count).map(shift),last=history.at(-1)!;
+ for(let t=last.t+60;t<now;t+=60)history.push({...last,t,o:last.c,h:last.c,l:last.c});
+ runner.store.setHistory(symbol,history);runner.store.ingest(symbol,{...last,t:now,o:last.c,h:last.c,l:last.c});
+ runner.lastTick.set(symbol,Date.now());runner.evaluateSymbol(symbol);
 }
 startWeb(runner,db,cfg,join(process.cwd(),'web'));
 console.log(`Synthetic preview: http://localhost:${cfg.port}`);

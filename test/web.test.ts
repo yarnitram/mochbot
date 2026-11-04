@@ -24,7 +24,7 @@ describe('Limit Desk HTTP integration',()=>{
    expect(html).toContain('Mochbot · Limit Desk');
    for(const path of ['/desk.js','/desk.css','/legacy.html','/api/health','/api/orders']) expect((await fetch(url+path,{headers})).status).toBe(200);
    const strategies=await(await fetch(url+'/api/strategies',{headers})).json() as any;
-   expect(strategies.strategies.map((s:any)=>s.id)).toEqual(['MOD-01E']);
+   expect(strategies.strategies.map((s:any)=>s.id)).toEqual(['MOD-01E','EMA-PULLBACK']);
    expect((await fetch(url+'/api/strategies/settings',{method:'POST',headers,body:JSON.stringify({mod01e:{entryFib:2}})})).status).toBe(400);
    expect((await fetch(url+'/api/strategies/settings',{method:'POST',headers,body:JSON.stringify({mod01e:{entryFib:.5,useKillzone:false}})})).status).toBe(200);
    expect(runner.mod01eCfg('').entryFib).toBe(.5);
@@ -69,6 +69,19 @@ describe('Limit Desk HTTP integration',()=>{
    const journal=await(await fetch(url+'/api/trades',{headers})).json() as any;
    expect(journal.history[0].id).toBe(id);
    expect(journal.history[0].pnl_usd).toBe(20);
+   expect((await fetch(url+'/api/strategies/EMA-PULLBACK/settings',{method:'POST',headers,body:JSON.stringify({entryRatio:.382,orderExpiry:8})})).status).toBe(200);
+   expect(runner.emaCfg().entryRatio).toBe(.382);expect(runner.emaCfg().orderExpiry).toBe(8);
+   expect((await fetch(url+'/api/strategies/EMA-PULLBACK/settings',{method:'POST',headers,body:JSON.stringify({fastLength:60,slowLength:20})})).status).toBe(400);
+   db.addWatch('BTC_USDT');
+   expect((await fetch(url+'/api/strategies/settings',{method:'POST',headers,body:JSON.stringify({globalStrategy:'BOTH',applyToWatchlist:true})})).status).toBe(200);
+   expect(db.getGlobalStrategy()).toBe('BOTH');expect(db.listWatch()[0].strategy).toBe('BOTH');
+   expect((await fetch(url+'/api/watchlist/BTC_USDT',{method:'PATCH',headers,body:JSON.stringify({strategy:'EMA-PULLBACK'})})).status).toBe(200);
+   expect(db.listWatch()[0].strategy).toBe('EMA-PULLBACK');
+   expect((await fetch(url+'/api/watchlist/BTC_USDT',{method:'PATCH',headers,body:JSON.stringify({strategy:'INVALID'})})).status).toBe(400);
+   snapshot=await(await fetch(url+'/api/state',{headers})).json() as any;
+   expect(snapshot.watchlist[0].setups[0].strategyId).toBe('EMA-PULLBACK');
+   expect(snapshot.strategyPerformance.map((s:any)=>s.id)).toEqual(['MOD-01E','EMA-PULLBACK']);
+   expect((await fetch(url+'/api/settings',{method:'POST',headers,body:JSON.stringify({max_open_risk:-1})})).status).toBe(400);
   }finally{runner.stop();server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));db.close()}
  });
  it('retains SQLite order plans after reopening the database',()=>{

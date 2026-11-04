@@ -17,12 +17,16 @@ export class AlertGate {
   static key(s: Pick<Setup, 'symbol' | 'setupId' | 'stage'>) {
     return `${s.symbol}|${s.setupId}|${s.stage}`;
   }
+  private cooldownKey(s:Pick<Setup,'symbol'|'setupId'|'stage'>) {
+    const scope=s.setupId?.includes(':EMA:')?'EMA':s.setupId?.includes('01E:')?'MOD-01E':'legacy';
+    return `${s.symbol}|${scope}|${s.stage}`;
+  }
 
   /** Hydrate from persisted alerts so restarts do not re-fire. */
   prime(s: Pick<Setup, 'symbol' | 'setupId' | 'stage'>, atMs: number) {
     if (s.stage === 'IDLE' || !s.setupId) return;
     this.seen.set(AlertGate.key(s), atMs);
-    this.cool.set(`${s.symbol}|${s.stage}`, atMs);
+    this.cool.set(this.cooldownKey(s), atMs);
   }
 
   shouldAlert(s: Setup, nowMs = Date.now()): boolean {
@@ -31,11 +35,11 @@ export class AlertGate {
     const at = this.seen.get(key);
     if (at !== undefined && nowMs - at < this.ttlMs[s.stage]) return false;
     if (s.stage !== 'ENTRY_READY') {
-      const c = this.cool.get(`${s.symbol}|${s.stage}`);
+      const c = this.cool.get(this.cooldownKey(s));
       if (c !== undefined && nowMs - c < this.cooldownMs) return false;
     }
     this.seen.set(key, nowMs);
-    this.cool.set(`${s.symbol}|${s.stage}`, nowMs);
+    this.cool.set(this.cooldownKey(s), nowMs);
     return true;
   }
 }

@@ -1,5 +1,16 @@
 import type { Candle } from '../types.js';
 
+/** EMA seeded with an SMA; no values before enough closed candles exist. */
+export function ema(candles: Candle[], length: number): number[] {
+  const values = new Array<number>(candles.length).fill(NaN);
+  let sum=0, previous=NaN;
+  for(let i=0;i<candles.length;i++) {
+    if(i<length) { sum+=candles[i].c; if(i===length-1) values[i]=previous=sum/length; }
+    else values[i]=previous=candles[i].c*2/(length+1)+previous*(1-2/(length+1));
+  }
+  return values;
+}
+
 /** Only complete, contiguous buckets can confirm structure. Input is closed 1m bars. */
 export function aggregateClosed(candles: Candle[], minutes: number): Candle[] {
   const counts = new Map<number, Set<number>>();

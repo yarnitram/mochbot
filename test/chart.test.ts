@@ -64,4 +64,9 @@ describe('Chart Renderer', () => {
     expect(png[2]).toBe(0x4e); // N
     expect(png[3]).toBe(0x47); // G
   });
+  it('labels EMA context and its actual 2R/3R targets instead of SMC defaults',()=>{
+    const svg=generateChartSvg('BTC_USDT',htf,ltf,{...setup,strategyId:'EMA-PULLBACK',entry:100,sl:95,tp1:110,tp2:115});
+    expect(svg).toContain('EMA PULLBACK');expect(svg).toContain('TP1 (1:2)');expect(svg).toContain('TP2 (1:3)');
+    expect(svg).not.toContain('TP2 (1:5)');
+  });
 });

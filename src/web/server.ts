@@ -7,6 +7,9 @@ import type { Db } from '../db/index.js';
 import type { AppConfig } from '../config.js';
 import { validateMod01eConfig } from '../strategy/mod01e.js';
 import { markTrade } from '../engine/markTrade.js';
+import { validateEmaConfig } from '../strategy/emaPullback.js';
+import type { StrategySelection } from '../types.js';
+const validSelection=(s:unknown):s is StrategySelection=>['MOD-01E','EMA-PULLBACK','BOTH'].includes(s as string);
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -76,7 +79,9 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
 
   const snapshot = () => ({
     version: '1.0.0',
-    strategy: 'MOD-01E',
+    strategy: db.getGlobalStrategy(),
+    maxOpenRisk:runner.maxOpenRisk,
+    strategyPerformance:['MOD-01E','EMA-PULLBACK'].map(id=>({id,...db.getPerformanceSummary(id)})),
     serverTime: Date.now(),
     limitOrders: db.listLimitOrders().map(o => {
       const payload = JSON.parse(o.payload);
@@ -120,6 +125,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
         ...w,
         maxLeverage: contract?.maxLeverage ?? 50,
         state: runner.states.get(w.symbol) ?? null,
+        setups:[...(runner.strategyStates.get(w.symbol)?.values()??[])],
         feed: {
           lastTick: runner.lastTick.get(w.symbol) ?? null,
           candleTime: (runner.store.forming(w.symbol) ?? runner.store.closed(w.symbol).at(-1))?.t ?? null,
@@ -163,6 +169,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
               description: '1H Bias + 15m Alignment + 15m CHoCH Dealing Range → 5m Limit Retest at 0.618 Fib OTE.',
               config: runner.mod01eCfg(''),
             },
+            {id:'EMA-PULLBACK',name:'EMA Trend Pullback Limit',description:'1H EMA trend → 15m EMA-zone pullback → 5m confirmation → confirmation-candle retracement limit.',config:runner.emaCfg()},
           ],
         });
       }
@@ -176,12 +183,19 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
 
       if (path === '/api/strategies/settings' && req.method === 'POST') {
         const b = await readBody(req);
-        if (b.globalStrategy && b.globalStrategy !== 'MOD-01E') return json(res, 400, { error: 'Only MOD-01E is available' });
-        let validated;
-        try { validated = validateMod01eConfig({ ...runner.mod01eCfg(''), ...b.mod01e }); }
+        if (b.globalStrategy && !validSelection(b.globalStrategy)) return json(res, 400, { error: 'Unsupported strategy selection' });
+        let validated,validatedEma;
+        try {
+          if(b.mod01e)validated = validateMod01eConfig({ ...runner.mod01eCfg(''), ...b.mod01e });
+          if(b.ema)validatedEma=validateEmaConfig({...runner.emaCfg(),...b.ema});
+        }
         catch (e) { return json(res, 400, { error: (e as Error).message }); }
-        db.setStrategyCfg('MOD-01E', validated);
-        runner.setKillzone(validated.useKillzone);
+        if(validated){db.setStrategyCfg('MOD-01E', validated);runner.setKillzone(validated.useKillzone)}
+        if(validatedEma)db.setStrategyCfg('EMA-PULLBACK',validatedEma);
+        if(b.globalStrategy) {
+          db.setGlobalStrategy(b.globalStrategy);
+          if(b.applyToWatchlist===true)for(const w of db.listWatch())db.updateWatch(w.symbol,{strategy:b.globalStrategy});
+        }
         runner.reEvaluateAll();
         push('state_full', snapshot());
         return json(res, 200, { ok: true });
@@ -191,12 +205,12 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
       if (stratMatch && req.method === 'POST') {
         const id = stratMatch[1].toUpperCase() as any;
         const b = await readBody(req);
-        if (id !== 'MOD-01E') return json(res, 400, { error: 'Only MOD-01E is available' });
+        if (!['MOD-01E','EMA-PULLBACK'].includes(id)) return json(res, 400, { error: 'Unsupported strategy' });
         let validated;
-        try { validated = validateMod01eConfig({ ...runner.mod01eCfg(''), ...b }); }
+        try { validated = id==='EMA-PULLBACK'?validateEmaConfig({...runner.emaCfg(),...b}):validateMod01eConfig({ ...runner.mod01eCfg(''), ...b }); }
         catch (e) { return json(res, 400, { error: (e as Error).message }); }
         db.setStrategyCfg(id, validated);
-        runner.setKillzone(validated.useKillzone);
+        if('useKillzone' in validated)runner.setKillzone(validated.useKillzone);
         runner.reEvaluateAll();
         push('state_full', snapshot());
         return json(res, 200, { ok: true, config: db.getStrategyCfg(id) });
@@ -316,16 +330,15 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
       }
       if (m && req.method === 'PATCH') {
         const b = await readBody(req);
+        if(b.strategy!==undefined&&!validSelection(b.strategy))return json(res,400,{error:'Unsupported strategy'});
         const sym = runner.normalize(m[1]);
         const ok = db.updateWatch(sym, {
           killzone: b.killzone === undefined ? undefined : b.killzone === null ? null : !!b.killzone,
           sensitivity: b.sensitivity,
           watch_distance: b.watch_distance === undefined ? undefined : b.watch_distance === null ? null : Number(b.watch_distance),
-          strategy: 'MOD-01E',
+          strategy: b.strategy,
         });
-        if (b.strategy === 'MOD-01D' || b.strategy === 'MOD-01E') {
-          void runner.backfillHtf(sym);
-        }
+        if(b.strategy)await runner.backfillHtf(sym);
         runner.evaluateSymbol(sym);
         push('state_full', snapshot());
         return json(res, ok ? 200 : 404, { ok });
@@ -377,6 +390,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
 
       if (path === '/api/settings' && req.method === 'POST') {
         const b = await readBody(req);
+        if(b.max_open_risk!==undefined&&(!Number.isFinite(b.max_open_risk)||b.max_open_risk<=0))return json(res,400,{error:'Shared risk cap must be positive'});
         if (typeof b.killzone === 'boolean') runner.setKillzone(b.killzone);
         if (typeof b.muted === 'boolean') runner.setMuted(b.muted);
         const discoveryKeys = ['auto_scanner','meme_scanner','ai_scanner','game_scanner','gainers_scanner','losers_scanner','ultra_lev_scanner'];
@@ -384,7 +398,8 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
         if (typeof b.min_gainer_volume === 'number' && b.min_gainer_volume >= 0) runner.setMinGainerVolume(b.min_gainer_volume);
         if (typeof b.max_active_coins === 'number' && b.max_active_coins >= 10) runner.setMaxActiveCoins(b.max_active_coins);
         if (typeof b.min_leverage === 'number' && b.min_leverage >= 1) runner.setMinLeverage(b.min_leverage);
-        if (b.global_strategy && (b.global_strategy === 'MOD-01' || b.global_strategy === 'MOD-01D' || b.global_strategy === 'MOD-01E')) db.setGlobalStrategy(b.global_strategy);
+        if (validSelection(b.global_strategy)) db.setGlobalStrategy(b.global_strategy);
+        if(b.max_open_risk!==undefined)db.setSetting('max_open_risk',String(b.max_open_risk));
         if (typeof b.account_capital === 'number' && b.account_capital > 0) db.setAccountCapital(b.account_capital);
         if (typeof b.default_margin === 'number' && b.default_margin > 0) db.setDefaultMargin(b.default_margin);
         if (typeof b.risk_per_trade === 'number' && b.risk_per_trade > 0) db.setRiskPerTrade(b.risk_per_trade);
@@ -392,7 +407,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
           runner.ensureAutoScanTimer();
           await runner.runAutoScan();
         }
-        if (typeof b.killzone === 'boolean' || b.account_capital !== undefined || b.risk_per_trade !== undefined) runner.reEvaluateAll();
+        if (typeof b.killzone === 'boolean' || b.account_capital !== undefined || b.risk_per_trade !== undefined || b.max_open_risk!==undefined) runner.reEvaluateAll();
         push('state_full', snapshot());
         return json(res, 200, snapshot());
       }

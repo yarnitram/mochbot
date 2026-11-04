@@ -1,6 +1,6 @@
 # Mochbot
 
-**1.0 rebuild:** the active scanner now uses MOD-01E exclusively, with the new Limit Desk dashboard, chronological confirmation and a persistent limit ledger. See [rebuild behavior and Proxmox upgrade notes](docs/REBUILD.md). The earlier MOD-01 overview below describes the retained historical implementation.
+**Limit Desk:** choose MOD-01E, EMA Trend Pullback Limit, or both, with chronological confirmation, a persistent limit ledger, live simulated P&L and shared exposure checks. See [strategy rules and Proxmox upgrade notes](docs/REBUILD.md). The earlier MOD-01 overview below describes the retained historical implementation.
 
 Alert-only scanner for **MEXC USDT-perpetual futures** that runs **Phantom SMC MOD-01 (Pro-Trend Confirmation)** on a watchlist and notifies you on **Telegram** and **Discord**. A local **dashboard** shows each coin's stage live.
 

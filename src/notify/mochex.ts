@@ -103,7 +103,9 @@ export class MochexSync {
 
     const url = normalizeMochexUrl(cfg.apiUrl);
     const side = trade.direction.toLowerCase() === 'short' ? 'short' : 'long';
-    const notes = customNotes ?? `[${trade.strategy_id}] Entry: ${trade.entry_price} | TP1 (1:3): ${trade.tp1_price} | TP2 (1:5): ${trade.tp2_price}`;
+    const risk=Math.abs(trade.entry_price-(trade.initial_sl_price??trade.sl_price));
+    const rr=(target:number)=>risk>0?Number((Math.abs(target-trade.entry_price)/risk).toFixed(2)):'-';
+    const notes = customNotes ?? `[${trade.strategy_id}] Entry: ${trade.entry_price} | TP1 (1:${rr(trade.tp1_price)}): ${trade.tp1_price} | TP2 (1:${rr(trade.tp2_price)}): ${trade.tp2_price}`;
 
     const payload = {
       action: 'open',

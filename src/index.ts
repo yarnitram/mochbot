@@ -72,4 +72,4 @@ process.on('unhandledRejection', err => {
 ws.start();
 await runner.start();
 if (telegram) telegram.poll((cmd, args) => runner.handleCommand(cmd, args), e => console.log('telegram poll error:', (e as Error).message));
-console.log(`mochbot up | strategy=MOD-01E | mode=${cfg.paperMode ? 'PAPER' : 'ALERTS'} | dashboard :${cfg.port}`);
+console.log(`mochbot up | strategy=${db.getGlobalStrategy()} | mode=${cfg.paperMode ? 'PAPER' : 'ALERTS'} | dashboard :${cfg.port}`);

@@ -12,7 +12,24 @@ export type Stage = 'IDLE' | 'WATCH' | 'ARMED' | 'ENTRY_READY';
 export type Direction = 'LONG' | 'SHORT';
 export type Sensitivity = 'strict' | 'balanced' | 'sensitive';
 export type OrderType = 'MARKET' | 'LIMIT' | 'TRIGGER_LIMIT';
-export type StrategyId = 'MOD-01' | 'MOD-01D' | 'MOD-01E';
+export type ActiveStrategyId = 'MOD-01E' | 'EMA-PULLBACK';
+export type StrategyId = 'MOD-01' | 'MOD-01D' | ActiveStrategyId;
+export type StrategySelection = StrategyId | 'BOTH';
+
+export interface EmaPullbackCfg {
+  fastLength: number;
+  slowLength: number;
+  pullbackWindowBars: number;
+  orderExpiry: number;
+  entryRatio: number;
+  stopBufferAtr: number;
+  rrTP1: number;
+  rrTP2: number;
+}
+export const DEFAULT_EMA_CFG: EmaPullbackCfg = {
+  fastLength:20, slowLength:50, pullbackWindowBars:6, orderExpiry:6,
+  entryRatio:.5, stopBufferAtr:.2, rrTP1:2, rrTP2:3,
+};
 
 export interface Mod01dCfg {
   biasTfMinutes: number;
@@ -195,7 +212,7 @@ export interface PositionSizing {
 export interface Setup {
   limitContext?: LimitContext;
   reason?: string;
-  orderStatus?: 'PENDING' | 'TOUCHED' | 'EXPIRED' | 'INVALIDATED';
+  orderStatus?: 'PENDING' | 'TOUCHED' | 'EXPIRED' | 'INVALIDATED' | 'BLOCKED';
   expiresAt?: number;
   symbol: string;
   stage: Stage;
