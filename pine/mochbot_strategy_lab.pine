@@ -1,0 +1,807 @@
+//@version=6
+// Mochbot Strategy Lab — eight current strategies, source baseline e0cec1c.
+// Draft research port. See pine/README.md for broker-emulator differences.
+// Use STANDARD 1-minute candles. Select one model; compare models separately.
+strategy("Mochbot Strategy Lab — 8 Models", overlay=true, pyramiding=0, initial_capital=1000,
+     currency=currency.USD, default_qty_type=strategy.fixed, margin_long=2, margin_short=2,
+     commission_type=strategy.commission.percent, commission_value=0.06, slippage=1,
+     process_orders_on_close=false, calc_on_every_tick=false, calc_on_order_fills=false,
+     backtest_fill_limits_assumption=0, max_bars_back=5000, max_labels_count=100)
+
+string model = input.string("MOD-01E", "Strategy", options=["MOD-01E", "EMA-PULLBACK", "TURTLE-SOUP", "OPENING-RANGE", "BREAKOUT-RETEST", "VWAP-RECLAIM", "BOLLINGER-RANGE", "RSI-DIVERGENCE"], group="01 · Model")
+string preset = input.string("Recommended (slower)", "Timeframe preset (except MOD-01E)", options=["Bot defaults (fast)", "Recommended (slower)"], group="01 · Model")
+bool allowLong = input.bool(true, "Long setups", group="01 · Model")
+bool allowShort = input.bool(true, "Short setups", group="01 · Model")
+int beginDate = input.time(timestamp("01 Jan 2024 00:00 +0000"), "Start entries", group="02 · Test & sizing")
+int finishDate = input.time(timestamp("01 Jan 2035 00:00 +0000"), "End entries", group="02 · Test & sizing")
+float riskUsd = input.float(5, "Risk per setup (USD, before costs)", minval=0.1, group="02 · Test & sizing")
+float capital = input.float(1000, "Sizing capital cap (USD)", minval=1, group="02 · Test & sizing")
+int leverageCap = input.int(50, "Notional leverage cap (emulator margin is 2%)", minval=1, maxval=50, group="02 · Test & sizing")
+bool closeAtEnd = input.bool(true, "Close remaining position at test end", group="02 · Test & sizing")
+
+string mBiasTf = input.timeframe("60", "Bias timeframe", options=["60", "240"], group="03 · MOD-01E")
+int mAlign = input.int(15, "Alignment / CHoCH minutes", options=[5, 15, 30, 60], group="03 · MOD-01E")
+int mEntry = input.int(5, "Expiry bar minutes", options=[1, 3, 5, 15], group="03 · MOD-01E")
+int mBiasPivot = input.int(5, "Bias pivot length", minval=1, maxval=20, group="03 · MOD-01E")
+int mAlignPivot = input.int(5, "Alignment pivot length", minval=1, maxval=20, group="03 · MOD-01E")
+int mEntryPivot = input.int(3, "CHoCH pivot length (on alignment candles)", minval=1, maxval=20, group="03 · MOD-01E")
+bool mRequireAlign = input.bool(true, "Require structural alignment", group="03 · MOD-01E")
+string mBreak = input.string("Body close", "Break rule", options=["Body close", "Wick"], group="03 · MOD-01E")
+float mFib = input.float(0.618, "Entry Fibonacci ratio", minval=0.001, maxval=0.999, group="03 · MOD-01E")
+int mExpiry = input.int(18, "Expiry bars (expiry timeframe)", minval=1, maxval=100, group="03 · MOD-01E")
+bool mCancelBias = input.bool(true, "Cancel pending on bias/alignment disagreement", group="03 · MOD-01E")
+bool mCancelChoch = input.bool(true, "Cancel pending on new CHoCH", group="03 · MOD-01E")
+bool mSessions = input.bool(true, "UTC sessions: 07–11 / 13–17", group="03 · MOD-01E")
+float mBuffer = input.float(0.15, "Stop ATR buffer", minval=0, maxval=5, group="03 · MOD-01E")
+float mR1 = input.float(3, "TP1 R", minval=0.1, group="03 · MOD-01E")
+float mR2 = input.float(5, "TP2 R", minval=0.1, group="03 · MOD-01E")
+
+int eFast = input.int(20, "Fast EMA length", minval=1, maxval=100, group="04 · EMA Pullback")
+int eSlow = input.int(50, "Slow EMA length", minval=2, maxval=100, group="04 · EMA Pullback")
+int eWindow = input.int(6, "Pullback confirmation window (confirmation bars)", minval=1, maxval=100, group="04 · EMA Pullback")
+float eRatio = input.float(0.5, "Confirmation-candle retracement ratio", minval=0.001, maxval=0.999, group="04 · EMA Pullback")
+int eExpiry = input.int(6, "Expiry confirmation bars", minval=1, maxval=100, group="04 · EMA Pullback")
+float eBuffer = input.float(0.2, "Stop ATR buffer", minval=0, maxval=5, group="04 · EMA Pullback")
+float eR1 = input.float(2, "TP1 R", minval=0.1, group="04 · EMA Pullback")
+float eR2 = input.float(3, "TP2 R", minval=0.1, group="04 · EMA Pullback")
+
+int tLookback = input.int(20, "Completed reference-bar lookback", minval=2, maxval=100, group="05 · Turtle Soup")
+int tWindow = input.int(3, "Reclaim bars (including sweep)", minval=1, maxval=100, group="05 · Turtle Soup")
+string tEntryMode = input.string("Reclaimed level", "Entry", options=["Reclaimed level", "50% reclaim candle"], group="05 · Turtle Soup")
+float tSweep = input.float(0.1, "Minimum sweep ATR", minval=0, maxval=5, group="05 · Turtle Soup")
+float tBuffer = input.float(0.2, "Stop ATR buffer", minval=0, maxval=5, group="05 · Turtle Soup")
+float tR1 = input.float(1, "Minimum midpoint reward R", minval=0, group="05 · Turtle Soup")
+float tR2 = input.float(2, "Minimum opposite-edge reward R", minval=0.1, group="05 · Turtle Soup")
+int tExpiry = input.int(6, "Expiry confirmation bars", minval=1, maxval=100, group="05 · Turtle Soup")
+
+int pExpiry = input.int(6, "Expiry confirmation bars", minval=1, maxval=100, group="06 · Five-model shared filters")
+float pBuffer = input.float(0.2, "Stop ATR buffer", minval=0, maxval=5, group="06 · Five-model shared filters")
+float pMinStop = input.float(0.5, "Minimum stop ATR", minval=0.01, group="06 · Five-model shared filters")
+float pMaxStop = input.float(3, "Maximum stop ATR", minval=0.02, maxval=10, group="06 · Five-model shared filters")
+float pMinPct = input.float(0.15, "Minimum stop price distance %", minval=0, maxval=10, group="06 · Five-model shared filters")
+float pVolume = input.float(1.2, "Trend/divergence relative volume", minval=0, maxval=10, group="06 · Five-model shared filters")
+float pR1 = input.float(2, "Trend/divergence TP1 R", minval=0.1, group="06 · Five-model shared filters")
+float pR2 = input.float(3, "Trend/divergence TP2 R", minval=0.1, group="06 · Five-model shared filters")
+int bLookback = input.int(20, "Breakout prior confirmation-bar lookback", minval=10, maxval=100, group="07 · Breakout / opening range")
+int bWindow = input.int(6, "Retest deadline bars", minval=1, maxval=30, group="07 · Breakout / opening range")
+float bBuffer = input.float(0.1, "Breakout close buffer ATR", minval=0, maxval=2, group="07 · Breakout / opening range")
+int oHour = input.int(13, "Fixed UTC session start hour", minval=0, maxval=23, group="07 · Breakout / opening range")
+int oOpening = input.int(30, "Opening range minutes (multiple of 15)", minval=15, maxval=120, group="07 · Breakout / opening range")
+int oSession = input.int(180, "Full session minutes from start", minval=30, maxval=720, group="07 · Breakout / opening range")
+int bbLength = input.int(20, "Band lookback", minval=10, maxval=100, group="08 · Bollinger Range")
+float bbDeviation = input.float(2, "Standard deviations", minval=1, maxval=4, group="08 · Bollinger Range")
+float bbEfficiency = input.float(0.35, "Maximum range efficiency", minval=0.01, maxval=1, group="08 · Bollinger Range")
+float bbVolume = input.float(1, "Minimum relative volume", minval=0, maxval=10, group="08 · Bollinger Range")
+float bbR1 = input.float(1, "Minimum mean reward R", minval=0.1, group="08 · Bollinger Range")
+float bbR2 = input.float(2, "Minimum opposite-band reward R", minval=0.1, group="08 · Bollinger Range")
+int rPeriod = input.int(14, "RSI length (Bollinger & divergence)", minval=2, maxval=50, group="09 · RSI Divergence")
+int rPivot = input.int(2, "Pivot left / right bars", minval=1, maxval=5, group="09 · RSI Divergence")
+int rLookback = input.int(40, "Maximum pivot separation bars", minval=10, maxval=100, group="09 · RSI Divergence")
+float rDifference = input.float(5, "Minimum RSI divergence points", minval=1, maxval=30, group="09 · RSI Divergence")
+int rWindow = input.int(6, "Neckline confirmation deadline", minval=1, maxval=30, group="09 · RSI Divergence")
+
+bool fastPreset = preset == "Bot defaults (fast)"
+int confirmationMinutes = model == "MOD-01E" ? mAlign : fastPreset ? 5 : 15
+int pullbackMinutes = fastPreset ? 15 : 60
+string referenceTf = model == "MOD-01E" ? mBiasTf : fastPreset ? "60" : "240"
+int referenceMs = int(timeframe.in_seconds(referenceTf) * 1000)
+int confirmationMs = confirmationMinutes * 60000
+int fastLength = model == "EMA-PULLBACK" ? eFast : 20
+int slowLength = model == "EMA-PULLBACK" ? eSlow : 50
+bool packModel = model != "MOD-01E" and model != "EMA-PULLBACK" and model != "TURTLE-SOUP"
+
+if barstate.isfirst
+    if not timeframe.isminutes or timeframe.multiplier != 1
+        runtime.error("Use standard 1-minute candles. Confirmation timeframes are built internally.")
+    if not chart.is_standard
+        runtime.error("Use standard candles, not Heikin Ashi, Renko, or other synthetic chart types.")
+    if eFast >= eSlow or pMinStop >= pMaxStop or mR2 <= mR1 or eR2 <= eR1 or pR2 <= pR1 or bbR2 <= bbR1 or tR2 < tR1
+        runtime.error("Check EMA lengths, stop bounds and target ordering.")
+    if mEntry > mAlign or int(timeframe.in_seconds(mBiasTf) / 60) < mAlign
+        runtime.error("MOD-01E requires bias >= alignment >= expiry timeframe.")
+    if oOpening % 15 != 0 or oSession <= oOpening or oHour * 60 + oSession > 1440 or beginDate >= finishDate
+        runtime.error("Check fixed UTC session boundaries and test dates.")
+
+// A bounded closed-candle history. Indicators use Mochbot's SMA-seeded EMA and Wilder RSI.
+type MbBar
+    int t
+    int end
+    float o
+    float h
+    float l
+    float c
+    float v
+    float a = na
+    float r = na
+    float ef = na
+    float es = na
+
+type MbBars
+    array<MbBar> items
+    MbBar current = na
+    int count = 0
+    int n = 0
+    int continuous = 0
+    float atrValue = na
+    float trSeed = 0
+    float fastValue = na
+    float slowValue = na
+    float fastSeed = 0
+    float slowSeed = 0
+    float gain = 0
+    float loss = 0
+
+method at(MbBars this, int offset) =>
+    int index = this.items.size() - 1 - offset
+    MbBar result = index >= 0 and index < this.items.size() ? this.items.get(index) : na
+    result
+
+method ingest(MbBars this, int minutes, int fastLen, int slowLen, int rsiLen) =>
+    int bucket = int(math.floor(time / (minutes * 60000))) * minutes * 60000
+    if na(this.current) or this.current.t != bucket
+        this.current := MbBar.new(bucket, bucket + minutes * 60000, open, high, low, close, volume)
+        this.count := 0
+    else
+        this.current.h := math.max(this.current.h, high)
+        this.current.l := math.min(this.current.l, low)
+        this.current.c := close
+        this.current.v += volume
+    this.count += 1
+    bool completed = time_close == this.current.end and this.count == minutes
+    if completed
+        MbBar b = this.current
+        MbBar prev = this.at(0)
+        float tr = na(prev) ? b.h - b.l : math.max(b.h - b.l, math.max(math.abs(b.h - prev.c), math.abs(b.l - prev.c)))
+        this.n += 1
+        this.continuous := na(prev) or prev.end != b.t ? 1 : this.continuous + 1
+        if this.n <= 14
+            this.trSeed += tr
+            if this.n == 14
+                this.atrValue := this.trSeed / 14
+        else
+            this.atrValue := (this.atrValue * 13 + tr) / 14
+        if this.n <= fastLen
+            this.fastSeed += b.c
+            if this.n == fastLen
+                this.fastValue := this.fastSeed / fastLen
+        else
+            this.fastValue := b.c * 2 / (fastLen + 1) + this.fastValue * (1 - 2.0 / (fastLen + 1))
+        if this.n <= slowLen
+            this.slowSeed += b.c
+            if this.n == slowLen
+                this.slowValue := this.slowSeed / slowLen
+        else
+            this.slowValue := b.c * 2 / (slowLen + 1) + this.slowValue * (1 - 2.0 / (slowLen + 1))
+        if not na(prev)
+            float change = b.c - prev.c
+            if this.n - 1 <= rsiLen
+                this.gain += math.max(0, change)
+                this.loss += math.max(0, -change)
+                if this.n - 1 == rsiLen
+                    this.gain /= rsiLen
+                    this.loss /= rsiLen
+            else
+                this.gain := (this.gain * (rsiLen - 1) + math.max(0, change)) / rsiLen
+                this.loss := (this.loss * (rsiLen - 1) + math.max(0, -change)) / rsiLen
+        b.a := this.atrValue
+        b.ef := this.fastValue
+        b.es := this.slowValue
+        if this.n > rsiLen
+            b.r := this.gain == 0 and this.loss == 0 ? 50 : this.loss == 0 ? 100 : 100 - 100 / (1 + this.gain / this.loss)
+        this.items.push(b)
+        if this.items.size() > 1000
+            this.items.shift()
+        this.current := na
+    completed
+
+method extreme(MbBars this, int length, int offset, bool isHigh) =>
+    float result = na
+    if this.items.size() >= length + offset
+        for j = offset to offset + length - 1
+            MbBar b = this.at(j)
+            float value = isHigh ? b.h : b.l
+            result := na(result) ? value : isHigh ? math.max(result, value) : math.min(result, value)
+    result
+
+method pivot(MbBars this, int length, bool isHigh) =>
+    float result = na
+    if this.items.size() >= length * 2 + 1
+        MbBar p = this.at(length)
+        float price = isHigh ? p.h : p.l
+        bool valid = true
+        for j = 0 to length * 2
+            MbBar b = this.at(j)
+            if j != length and (isHigh ? b.h >= price : b.l <= price)
+                valid := false
+        if valid
+            result := price
+    result
+
+f_seededEma(float source, int length) =>
+    var float seed = 0
+    var float value = na
+    var int count = 0
+    count += 1
+    if count <= length
+        seed += source
+        if count == length
+            value := seed / length
+    else
+        value := source * 2 / (length + 1) + value * (1 - 2.0 / (length + 1))
+    value
+
+f_strictPivot(float source, int length, bool isHigh) =>
+    float point = source[length]
+    bool valid = not na(point)
+    for j = 0 to length * 2
+        if na(source[j]) or (j != length and (isHigh ? source[j] >= point : source[j] <= point))
+            valid := false
+    valid ? point : na
+
+f_reference(int offset) =>
+    var float swingHigh = na
+    var float swingLow = na
+    var int direction = 0
+    float ph = f_strictPivot(high, mBiasPivot, true)
+    float pl = f_strictPivot(low, mBiasPivot, false)
+    if not na(ph)
+        swingHigh := ph
+    if not na(pl)
+        swingLow := pl
+    if not na(swingHigh) and close > swingHigh
+        direction := 1
+    else if not na(swingLow) and close < swingLow
+        direction := -1
+    float ef = f_seededEma(close, fastLength)
+    float es = f_seededEma(close, slowLength)
+    float av = ta.atr(14)
+    float rh = ta.highest(high, tLookback)
+    float rl = ta.lowest(low, tLookback)
+    [time_close[offset], close[offset], ef[offset], ef[offset + 1], es[offset], av[offset], direction[offset], rh[offset], rl[offset], bar_index[offset] + 1]
+
+// Unoffset data is consumed ONLY when its own close time is <= this confirmed 1m close.
+// Otherwise use offset + lookahead_on. This avoids developing reference candles in realtime.
+[rawEnd, rawClose, rawFast, rawPreviousFast, rawSlow, rawAtr, rawBias, rawHigh, rawLow, rawCount] = request.security(syminfo.tickerid, referenceTf, f_reference(0), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+[previousEnd, previousClose, previousFast, previousPreviousFast, previousSlow, previousAtr, previousBias, previousHigh, previousLow, previousCount] = request.security(syminfo.tickerid, referenceTf, f_reference(1), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_on)
+bool rawClosed = not na(rawEnd) and rawEnd <= time_close
+int refEnd = rawClosed ? rawEnd : previousEnd
+float refClose = rawClosed ? rawClose : previousClose
+float refFast = rawClosed ? rawFast : previousFast
+float refPreviousFast = rawClosed ? rawPreviousFast : previousPreviousFast
+float refSlow = rawClosed ? rawSlow : previousSlow
+float refAtr = rawClosed ? rawAtr : previousAtr
+int bias = rawClosed ? rawBias : previousBias
+int refCount = rawClosed ? rawCount : previousCount
+bool referenceFresh = not na(refEnd) and time_close - refEnd < referenceMs * 2
+int trend = refClose > refFast and refFast > refSlow and refFast > refPreviousFast ? 1 : refClose < refFast and refFast < refSlow and refFast < refPreviousFast ? -1 : 0
+int emaTrend = refClose > refFast and refFast > refSlow ? 1 : refClose < refFast and refFast < refSlow ? -1 : 0
+f_utcSession(int timestampValue) =>
+    int h = hour(timestampValue, "UTC")
+    (h >= 7 and h < 11) or (h >= 13 and h < 17)
+
+var MbBars confirmations = MbBars.new(array.new<MbBar>())
+var MbBars pullbacks = MbBars.new(array.new<MbBar>())
+var bool pending = false
+var bool planAlive = false
+var int planDirection = 0
+var float planEntry = na
+var float planStop = na
+var float planTp1 = na
+var float planTp2 = na
+var float planQty = na
+var int planExpiry = na
+var bool tp1Done = false
+var int observedClosed = 0
+var int ambiguousMinutes = 0
+var int plansAdmitted = 0
+var string stateText = "Warming up"
+var int reactionDirection = 0
+var int reactionTime = na
+var int reactionExpiry = na
+var float reactionLow = na
+var float reactionHigh = na
+var float alignHigh = na
+var float alignLow = na
+var int alignDirection = 0
+var float entryHigh = na
+var float entryLow = na
+var int entryDirection = 0
+var int sweepDirection = 0
+var float sweepHigh = na
+var float sweepLow = na
+var float sweepExtreme = na
+var int sweepTime = na
+var int sweepExpiry = na
+var int usedLowRangeEnd = na
+var int usedHighRangeEnd = na
+var int breakoutDirection = 0
+var float breakoutLevel = na
+var float breakoutHigh = na
+var float breakoutLow = na
+var int breakoutIndex = na
+var int breakoutDeadline = na
+var int orbDay = na
+var float orbHigh = na
+var float orbLow = na
+var int orbCount = 0
+var bool orbLongUsed = false
+var bool orbShortUsed = false
+var int vwapDay = na
+var bool vwapValid = false
+var float sessionPv = 0
+var float sessionVolume = 0
+var float sessionVwap = na
+var int sessionBars = 0
+var int lowPivotIndex = na
+var int highPivotIndex = na
+var float lowPivotPrice = na
+var float highPivotPrice = na
+var float lowPivotRsi = na
+var float highPivotRsi = na
+var int divergenceDirection = 0
+var float divergenceExtreme = na
+var float divergenceNeckline = na
+var int divergenceExpiry = na
+
+int signalDirection = 0
+float signalEntry = na
+float signalStop = na
+float signalTp1 = na
+float signalTp2 = na
+int signalExpiry = na
+bool cancelPlan = false
+bool ambiguousBar = false
+bool newConfirmation = false
+bool newPullback = false
+bool slotFree = false
+bool inDates = false
+MbBar b = na
+MbBar prev = na
+int index = na
+int day = na
+float a = na
+float priorVwap = na
+bool ready = false
+bool volumeOk = false
+int sessionStart = na
+int openingEnd = na
+int sessionEnd = na
+
+if barstate.isconfirmed
+    bool closedAdvanced = strategy.closedtrades > observedClosed
+    if closedAdvanced
+        for tradeNo = observedClosed to strategy.closedtrades - 1
+            if strategy.closedtrades.exit_comment(tradeNo) == "TP1"
+                tp1Done := true
+        observedClosed := strategy.closedtrades
+    if pending
+        ambiguousBar := planDirection == 1 ? low <= planStop and low <= planEntry : high >= planStop and high >= planEntry
+        if ambiguousBar
+            ambiguousMinutes += 1
+        if strategy.position_size != 0 or closedAdvanced
+            pending := false
+    if planAlive and strategy.position_size == 0 and closedAdvanced
+        planAlive := false
+        pending := false
+        stateText := "Position closed"
+    bool minuteGap = not na(time_close[1]) and time != time_close[1]
+    if pending and (time_close >= planExpiry or (packModel and minuteGap))
+        cancelPlan := true
+        stateText := minuteGap ? "Pending invalidated: missing minute" : "Pending expired"
+
+    newConfirmation := confirmations.ingest(confirmationMinutes, fastLength, slowLength, rPeriod)
+    newPullback := pullbacks.ingest(pullbackMinutes, fastLength, slowLength, rPeriod)
+    slotFree := not planAlive and strategy.position_size == 0
+    inDates := time_close >= beginDate and time_close < finishDate
+
+if barstate.isconfirmed
+    // EMA trend/pullback/reaction runs before the subsequent confirmation candle check.
+    if model == "EMA-PULLBACK"
+        if reactionDirection != 0 and (emaTrend != reactionDirection or time_close >= reactionExpiry)
+            reactionDirection := 0
+        if newPullback and slotFree and reactionDirection == 0 and emaTrend != 0
+            MbBar pb = pullbacks.at(0)
+            float top = math.max(pb.ef, pb.es)
+            float bottom = math.min(pb.ef, pb.es)
+            if not na(pb.es) and pb.l <= top and pb.h >= bottom
+                reactionDirection := emaTrend
+                reactionTime := pb.end
+                reactionExpiry := pb.end + eWindow * confirmationMs
+                reactionLow := pb.l
+                reactionHigh := pb.h
+                stateText := "EMA pullback; waiting for later confirmation"
+
+if barstate.isconfirmed and newConfirmation
+    b := confirmations.at(0)
+    prev := confirmations.at(1)
+    index := confirmations.n - 1
+    a := b.a
+    day := int(math.floor(b.t / 86400000)) * 86400000
+    bool confGap = not na(prev) and prev.end != b.t
+    if confGap
+        reactionDirection := 0
+        breakoutDirection := 0
+        divergenceDirection := 0
+        lowPivotIndex := na
+        highPivotIndex := na
+        vwapValid := false
+    // Session VWAP uses CONFIRMATION-bar typical prices and volumes, not minute VWAP.
+    if na(vwapDay) or day != vwapDay
+        vwapDay := day
+        vwapValid := b.t == day
+        sessionPv := 0
+        sessionVolume := 0
+        sessionBars := 0
+        sessionVwap := na
+    priorVwap := sessionVwap
+    sessionPv += (b.h + b.l + b.c) / 3 * b.v
+    sessionVolume += b.v
+    sessionBars += 1
+    sessionVwap := sessionVolume > 0 ? sessionPv / sessionVolume : na
+
+if barstate.isconfirmed and newConfirmation and (model == "MOD-01E")
+    float ah = confirmations.pivot(mAlignPivot, true)
+    float al = confirmations.pivot(mAlignPivot, false)
+    if not na(ah)
+        alignHigh := ah
+    if not na(al)
+        alignLow := al
+    if not na(alignHigh) and b.c > alignHigh
+        alignDirection := 1
+    else if not na(alignLow) and b.c < alignLow
+        alignDirection := -1
+    float eh = confirmations.pivot(mEntryPivot, true)
+    float el = confirmations.pivot(mEntryPivot, false)
+    if not na(eh)
+        entryHigh := eh
+    if not na(el)
+        entryLow := el
+    bool up = not na(entryHigh) and (mBreak == "Body close" ? b.c : b.h) > entryHigh
+    bool down = not na(entryLow) and (mBreak == "Body close" ? b.c : b.l) < entryLow
+    bool chochUp = up and entryDirection == -1
+    bool chochDown = down and entryDirection == 1
+    if up
+        entryDirection := 1
+    else if down
+        entryDirection := -1
+    bool longAllowed = bias == 1 and (not mRequireAlign or alignDirection == 1)
+    bool shortAllowed = bias == -1 and (not mRequireAlign or alignDirection == -1)
+    if pending and mCancelBias and (planDirection == 1 ? not longAllowed : not shortAllowed)
+        cancelPlan := true
+    if pending and mCancelChoch and (chochUp or chochDown)
+        cancelPlan := true
+    if (slotFree or cancelPlan) and (chochUp or chochDown) and (not mSessions or f_utcSession(b.end))
+        int d = chochUp ? 1 : -1
+        if d == 1 ? longAllowed : shortAllowed
+            float zero = d == 1 ? entryHigh : entryLow
+            float one = confirmations.extreme(math.min(confirmations.items.size(), math.max(mEntryPivot * 3, 6) + 1), 0, d == -1)
+            signalDirection := d
+            signalEntry := zero + (one - zero) * mFib
+            signalStop := one - d * a * mBuffer
+            signalTp1 := signalEntry + d * (d * (signalEntry - signalStop)) * mR1
+            signalTp2 := signalEntry + d * (d * (signalEntry - signalStop)) * mR2
+            signalExpiry := b.end + mExpiry * mEntry * 60000
+
+if barstate.isconfirmed and newConfirmation and (model == "EMA-PULLBACK")
+    if pending and emaTrend != planDirection
+        cancelPlan := true
+    if slotFree and reactionDirection != 0 and b.t >= reactionTime and not na(prev)
+        reactionLow := math.min(reactionLow, b.l)
+        reactionHigh := math.max(reactionHigh, b.h)
+        bool confirms = reactionDirection == 1 ? b.c > prev.h : b.c < prev.l
+        if confirms and not na(a)
+            signalDirection := reactionDirection
+            signalEntry := reactionDirection == 1 ? b.h - (b.h - b.l) * eRatio : b.l + (b.h - b.l) * eRatio
+            signalStop := reactionDirection == 1 ? reactionLow - a * eBuffer : reactionHigh + a * eBuffer
+            signalTp1 := signalEntry + reactionDirection * (reactionDirection * (signalEntry - signalStop)) * eR1
+            signalTp2 := signalEntry + reactionDirection * (reactionDirection * (signalEntry - signalStop)) * eR2
+            signalExpiry := b.end + eExpiry * confirmationMs
+            if reactionDirection == 1 ? signalEntry >= b.c : signalEntry <= b.c
+                signalDirection := 0
+            reactionDirection := 0
+
+if barstate.isconfirmed and newConfirmation and (model == "TURTLE-SOUP" and slotFree and not na(a) and a > 0)
+    if sweepDirection != 0 and b.end > sweepExpiry
+        sweepDirection := 0
+    // Freeze only reference candles closed BEFORE the sweep candle opens.
+    bool rawBeforeSweep = not na(rawEnd) and rawEnd <= b.t
+    int rangeEnd = rawBeforeSweep ? rawEnd : previousEnd
+    int rangeCount = rawBeforeSweep ? rawCount : previousCount
+    float rh = rawBeforeSweep ? rawHigh : previousHigh
+    float rl = rawBeforeSweep ? rawLow : previousLow
+    if sweepDirection == 0 and rangeCount >= tLookback and rangeEnd <= b.t
+        bool lowerSweep = b.l < rl - a * tSweep
+        bool upperSweep = b.h > rh + a * tSweep
+        if lowerSweep != upperSweep and (lowerSweep or upperSweep)
+            int d = lowerSweep ? 1 : -1
+            bool used = d == 1 ? not na(usedLowRangeEnd) and usedLowRangeEnd == rangeEnd : not na(usedHighRangeEnd) and usedHighRangeEnd == rangeEnd
+            if not used
+                if d == 1
+                    usedLowRangeEnd := rangeEnd
+                else
+                    usedHighRangeEnd := rangeEnd
+                sweepDirection := d
+                sweepHigh := rh
+                sweepLow := rl
+                sweepExtreme := d == 1 ? b.l : b.h
+                sweepTime := b.t
+                sweepExpiry := b.end + (tWindow - 1) * confirmationMs
+    if sweepDirection != 0
+        sweepExtreme := sweepDirection == 1 ? math.min(sweepExtreme, b.l) : math.max(sweepExtreme, b.h)
+        if sweepDirection == 1 ? b.h > sweepHigh : b.l < sweepLow
+            sweepDirection := 0
+        else if b.c > sweepLow and b.c < sweepHigh
+            int d = sweepDirection
+            float en = tEntryMode == "Reclaimed level" ? (d == 1 ? sweepLow : sweepHigh) : (b.h + b.l) / 2
+            float st = sweepExtreme - d * a * tBuffer
+            float risk = d * (en - st)
+            float first = (sweepHigh + sweepLow) / 2
+            float second = d == 1 ? sweepHigh : sweepLow
+            if risk > 0 and en >= sweepLow and en <= sweepHigh and (d == 1 ? en < b.c : en > b.c) and d * (first - en) / risk >= tR1 and d * (second - en) / risk >= tR2 and d * (first - en) > 0 and d * (second - first) > 0
+                signalDirection := d
+                signalEntry := en
+                signalStop := st
+                signalTp1 := first
+                signalTp2 := second
+                signalExpiry := b.end + tExpiry * confirmationMs
+            sweepDirection := 0
+
+if barstate.isconfirmed and newConfirmation and packModel
+    // Pivots are tracked even during warm-up, but only after their right bars close.
+    if model == "RSI-DIVERGENCE" and confirmations.continuous >= rPivot * 2 + 1
+        float pl = confirmations.pivot(rPivot, false)
+        float ph = confirmations.pivot(rPivot, true)
+        MbBar point = confirmations.at(rPivot)
+        if not na(point) and not na(point.r)
+            for side = 0 to 1
+                int d = side == 0 ? 1 : -1
+                float price = d == 1 ? pl : ph
+                if not na(price)
+                    int oldIndex = d == 1 ? lowPivotIndex : highPivotIndex
+                    float oldPrice = d == 1 ? lowPivotPrice : highPivotPrice
+                    float oldRsi = d == 1 ? lowPivotRsi : highPivotRsi
+                    int pivotIndex = index - rPivot
+                    int distance = pivotIndex - oldIndex
+                    bool diverges = d == 1 ? price < oldPrice and point.r >= oldRsi + rDifference and oldRsi <= 35 : price > oldPrice and point.r <= oldRsi - rDifference and oldRsi >= 65
+                    if not na(oldIndex) and distance >= rPivot * 2 + 1 and distance <= rLookback and diverges
+                        float neckline = na
+                        for k = rPivot + 1 to rPivot + distance - 1
+                            MbBar between = confirmations.at(k)
+                            float value = d == 1 ? between.h : between.l
+                            neckline := na(neckline) ? value : d == 1 ? math.max(neckline, value) : math.min(neckline, value)
+                        divergenceDirection := d
+                        divergenceExtreme := price
+                        divergenceNeckline := neckline
+                        divergenceExpiry := index + rWindow
+                    if d == 1
+                        lowPivotIndex := pivotIndex
+                        lowPivotPrice := price
+                        lowPivotRsi := point.r
+                    else
+                        highPivotIndex := pivotIndex
+                        highPivotPrice := price
+                        highPivotRsi := point.r
+
+    int required = math.max(40, model == "BREAKOUT-RETEST" ? bLookback : model == "BOLLINGER-RANGE" ? math.max(bbLength, rPeriod) : model == "RSI-DIVERGENCE" ? math.max(rLookback, rPeriod) : 40)
+    ready := confirmations.continuous >= required and refCount >= 50 and referenceFresh and not na(a) and a > 0
+    float averageVolume = 0
+    if confirmations.items.size() >= 21
+        for j = 1 to 20
+            MbBar past = confirmations.at(j)
+            averageVolume += past.v / 20
+    float volumeThreshold = model == "BOLLINGER-RANGE" ? bbVolume : pVolume
+    volumeOk := averageVolume > 0 and not na(b.v) and b.v >= averageVolume * volumeThreshold
+    if pending and (model == "OPENING-RANGE" or model == "BREAKOUT-RETEST" or model == "VWAP-RECLAIM") and trend != planDirection
+        cancelPlan := true
+
+    if na(orbDay) or day != orbDay
+        orbDay := day
+        orbHigh := na
+        orbLow := na
+        orbCount := 0
+        orbLongUsed := false
+        orbShortUsed := false
+    sessionStart := day + oHour * 3600000
+    openingEnd := sessionStart + oOpening * 60000
+    sessionEnd := sessionStart + oSession * 60000
+    if b.t >= sessionStart and b.t < openingEnd
+        orbHigh := na(orbHigh) ? b.h : math.max(orbHigh, b.h)
+        orbLow := na(orbLow) ? b.l : math.min(orbLow, b.l)
+        orbCount += 1
+
+if barstate.isconfirmed and newConfirmation and packModel and ready and (slotFree or cancelPlan) and (model == "OPENING-RANGE" or model == "BREAKOUT-RETEST")
+    bool orb = model == "OPENING-RANGE"
+    bool rangeReady = not orb or (b.t >= openingEnd and b.end <= sessionEnd and orbCount == oOpening / confirmationMinutes)
+    if not rangeReady
+        breakoutDirection := 0
+    float rh = orb ? orbHigh : confirmations.extreme(bLookback, 1, true)
+    float rl = orb ? orbLow : confirmations.extreme(bLookback, 1, false)
+    if rangeReady
+        if breakoutDirection != 0
+            int d = breakoutDirection
+            bool failed = index > breakoutIndex + bWindow or b.end > breakoutDeadline or trend != d or (d == 1 ? b.c < breakoutLevel - 0.35 * a : b.c > breakoutLevel + 0.35 * a)
+            if failed
+                breakoutDirection := 0
+            else if index > breakoutIndex and b.l <= breakoutLevel + 0.15 * a and b.h >= breakoutLevel - 0.15 * a and (d == 1 ? b.c > breakoutLevel and b.c > b.o : b.c < breakoutLevel and b.c < b.o)
+                signalDirection := d
+                signalEntry := breakoutLevel
+                signalStop := d == 1 ? math.min(b.l, breakoutLevel - 0.5 * a) - pBuffer * a : math.max(b.h, breakoutLevel + 0.5 * a) + pBuffer * a
+                signalExpiry := math.min(b.end + pExpiry * confirmationMs, breakoutDeadline)
+                breakoutDirection := 0
+        if breakoutDirection == 0 and signalDirection == 0 and trend != 0 and volumeOk and math.abs(b.c - b.o) >= 0.5 * a
+            int d = trend
+            float level = d == 1 ? rh : rl
+            bool breaks = d == 1 ? b.c > rh + bBuffer * a and prev.c <= rh : b.c < rl - bBuffer * a and prev.c >= rl
+            bool used = orb and (d == 1 ? orbLongUsed : orbShortUsed)
+            if breaks and math.abs(b.c - level) <= 1.5 * a and not used
+                breakoutDirection := d
+                breakoutLevel := level
+                breakoutHigh := rh
+                breakoutLow := rl
+                breakoutIndex := index
+                breakoutDeadline := orb ? sessionEnd : 4102444800000
+                if orb
+                    if d == 1
+                        orbLongUsed := true
+                    else
+                        orbShortUsed := true
+
+if barstate.isconfirmed and newConfirmation and packModel and ready and (slotFree or cancelPlan) and (model == "VWAP-RECLAIM")
+    if vwapValid and sessionBars >= 20 and trend != 0 and volumeOk and not na(priorVwap)
+        bool crosses = trend == 1 ? prev.c <= priorVwap and b.c > sessionVwap + 0.1 * a and b.c > b.o : prev.c >= priorVwap and b.c < sessionVwap - 0.1 * a and b.c < b.o
+        if crosses
+            signalDirection := trend
+            signalEntry := sessionVwap
+            signalStop := trend == 1 ? math.min(b.l, prev.l) - pBuffer * a : math.max(b.h, prev.h) + pBuffer * a
+            signalExpiry := math.min(b.end + pExpiry * confirmationMs, day + 86400000)
+
+if barstate.isconfirmed and newConfirmation and packModel and ready and (slotFree or cancelPlan) and (model == "BOLLINGER-RANGE")
+    float mean = 0
+    for j = 1 to bbLength
+        MbBar past = confirmations.at(j)
+        mean += past.c / bbLength
+    float variance = 0
+    float path = 0
+    for j = 1 to bbLength
+        MbBar past = confirmations.at(j)
+        variance += math.pow(past.c - mean, 2) / bbLength
+        if j < bbLength
+            MbBar older = confirmations.at(j + 1)
+            path += math.abs(past.c - older.c)
+    MbBar first = confirmations.at(bbLength)
+    float efficiency = path > 0 ? math.abs(prev.c - first.c) / path : 0
+    float sd = math.sqrt(variance)
+    float upper = mean + bbDeviation * sd
+    float lower = mean - bbDeviation * sd
+    bool ranging = efficiency <= bbEfficiency and math.abs(refFast - refSlow) <= 0.75 * refAtr
+    bool longReject = b.l < lower and b.c > lower and b.c < mean and b.c > b.o and math.min(b.r, prev.r) <= 40
+    bool shortReject = b.h > upper and b.c < upper and b.c > mean and b.c < b.o and math.max(b.r, prev.r) >= 60
+    if ranging and sd > 0 and volumeOk and longReject != shortReject and (longReject or shortReject)
+        signalDirection := longReject ? 1 : -1
+        signalEntry := (b.h + b.l) / 2
+        signalStop := longReject ? b.l - pBuffer * a : b.h + pBuffer * a
+        signalTp1 := mean
+        signalTp2 := longReject ? upper : lower
+        signalExpiry := b.end + pExpiry * confirmationMs
+
+if barstate.isconfirmed and newConfirmation and packModel and ready and (slotFree or cancelPlan) and (model == "RSI-DIVERGENCE")
+    if divergenceDirection != 0 and (index > divergenceExpiry or (divergenceDirection == 1 ? b.l < divergenceExtreme : b.h > divergenceExtreme))
+        divergenceDirection := 0
+    if divergenceDirection != 0 and volumeOk
+        int d = divergenceDirection
+        bool necklineCross = d == 1 ? b.c > divergenceNeckline and prev.c <= divergenceNeckline : b.c < divergenceNeckline and prev.c >= divergenceNeckline
+        if necklineCross
+            signalDirection := d
+            signalEntry := (b.h + b.l) / 2
+            signalStop := divergenceExtreme - d * pBuffer * a
+            signalExpiry := b.end + pExpiry * confirmationMs
+            divergenceDirection := 0
+if barstate.isconfirmed and newConfirmation and packModel and ready and (slotFree or cancelPlan)
+    if signalDirection != 0 and model != "BOLLINGER-RANGE"
+        float risk = signalDirection * (signalEntry - signalStop)
+        signalTp1 := signalEntry + signalDirection * risk * pR1
+        signalTp2 := signalEntry + signalDirection * risk * pR2
+    if signalDirection != 0
+        int d = signalDirection
+        float risk = d * (signalEntry - signalStop)
+        float rr1 = d * (signalTp1 - signalEntry) / risk
+        float rr2 = d * (signalTp2 - signalEntry) / risk
+        bool valid = risk >= pMinStop * a and risk <= pMaxStop * a and risk / signalEntry * 100 >= pMinPct and (d == 1 ? signalEntry < b.c : signalEntry > b.c)
+        valid := valid and rr1 + 0.000000001 >= (model == "BOLLINGER-RANGE" ? bbR1 : pR1) and rr2 + 0.000000001 >= (model == "BOLLINGER-RANGE" ? bbR2 : pR2)
+        if not valid
+            signalDirection := 0
+            stateText := "Setup rejected by stop / limit / reward filters"
+
+if barstate.isconfirmed
+    // Submit only after a confirmation closes; never fill on its own signal candle.
+    if cancelPlan and pending and strategy.position_size == 0
+        strategy.cancel_all()
+        pending := false
+        planAlive := false
+        stateText := "Pending canceled / expired"
+    if signalDirection != 0 and inDates and not planAlive and strategy.position_size == 0 and (signalDirection == 1 ? allowLong : allowShort)
+        float en = math.round_to_mintick(signalEntry)
+        float st = math.round_to_mintick(signalStop)
+        float first = math.round_to_mintick(signalTp1)
+        float second = math.round_to_mintick(signalTp2)
+        float distance = signalDirection * (en - st)
+        bool geometry = en > 0 and st > 0 and first > 0 and second > 0 and distance > 0 and signalDirection * (first - en) > 0 and signalDirection * (second - first) > 0 and signalExpiry > time_close
+        if geometry
+            float stopFraction = distance / en
+            int lev = math.max(1, math.min(leverageCap, int(math.floor(0.85 / stopFraction))))
+            float pointValue = syminfo.pointvalue > 0 ? syminfo.pointvalue : 1
+            float unit = syminfo.mincontract > 0 ? syminfo.mincontract : 0.00000001
+            // Round margin DOWN as in Mochbot, then quantity down to TradingView's contract increment.
+            float margin = math.floor(math.min(capital, riskUsd / (stopFraction * lev)) * 10000) / 10000
+            float qty = math.floor((margin * lev / (en * pointValue)) / unit) * unit
+            // Two genuinely tradable half exits are required; no synthetic fractional contract halves.
+            float halfQty = math.floor(qty / 2 / unit) * unit
+            qty := halfQty * 2
+            if qty > 0 and qty * distance * pointValue <= riskUsd + 0.00000001
+                planDirection := signalDirection
+                planEntry := en
+                planStop := st
+                planTp1 := first
+                planTp2 := second
+                planQty := qty
+                planExpiry := signalExpiry
+                tp1Done := false
+                pending := true
+                planAlive := true
+                plansAdmitted += 1
+                stateText := "Pending limit"
+                strategy.entry("Entry", signalDirection == 1 ? strategy.long : strategy.short, qty=qty, limit=en, comment=model)
+                alert(model + " pending " + (signalDirection == 1 ? "LONG" : "SHORT") + " limit " + str.tostring(en, format.mintick) + "; SL " + str.tostring(st, format.mintick), alert.freq_once_per_bar_close)
+            else
+                stateText := "Rejected: quantity too small for two half exits"
+        else
+            stateText := "Rejected: price / reward / expiry geometry"
+
+    // Attach both brackets with the pending entry, so the entry bar is protected.
+    // TP1's actual emulator fill, not a high/low guess, enables break-even on the runner.
+    if planAlive
+        if not tp1Done
+            strategy.exit("Half", "Entry", qty=planQty / 2, stop=planStop, limit=planTp1, comment_profit="TP1", comment_loss="SL1")
+        else
+            strategy.cancel("Half")
+        strategy.exit("Runner", "Entry", qty=planQty / 2, stop=tp1Done ? planEntry : planStop, limit=planTp2, comment_profit="TP2", comment_loss=tp1Done ? "BE" : "SL2")
+        if strategy.position_size != 0
+            stateText := tp1Done ? "TP1 filled; runner at break-even" : "Open position"
+    if time_close >= finishDate
+        if pending and strategy.position_size == 0
+            strategy.cancel_all()
+            pending := false
+            planAlive := false
+        if closeAtEnd and strategy.position_size != 0
+            strategy.close_all(comment="Test end", immediately=true)
+        if strategy.position_size == 0
+            planAlive := false
+
+plot(planAlive ? planEntry : na, "Limit / entry", color=color.aqua, linewidth=2, style=plot.style_linebr)
+plot(planAlive ? (tp1Done ? planEntry : planStop) : na, "Stop / break-even", color=color.red, linewidth=2, style=plot.style_linebr)
+plot(planAlive ? planTp1 : na, "TP1 (50%)", color=color.lime, style=plot.style_linebr)
+plot(planAlive ? planTp2 : na, "TP2 (runner)", color=color.green, linewidth=2, style=plot.style_linebr)
+plot(model == "VWAP-RECLAIM" ? sessionVwap : na, "UTC confirmation-bar VWAP", color=color.orange)
+plotshape(ambiguousBar, title="Entry + stop in same minute (bot would invalidate)", style=shape.xcross, location=location.abovebar, color=color.orange, size=size.tiny)
+bgcolor(pending ? color.new(color.orange, 93) : na, title="Pending limit")
+
+var table desk = table.new(position.top_right, 2, 9, border_width=1)
+if barstate.islast
+    table.cell(desk, 0, 0, "MOCHBOT · RESEARCH", text_color=color.aqua, bgcolor=color.new(color.black, 15))
+    table.cell(desk, 1, 0, model, text_color=color.white, bgcolor=color.new(color.black, 15))
+    table.cell(desk, 0, 1, "Context / confirmation")
+    table.cell(desk, 1, 1, referenceTf + "m / " + str.tostring(confirmationMinutes) + "m")
+    table.cell(desk, 0, 2, "State")
+    table.cell(desk, 1, 2, stateText)
+    table.cell(desk, 0, 3, "Risk budget (before costs)")
+    table.cell(desk, 1, 3, "$" + str.tostring(riskUsd, "#.##"))
+    table.cell(desk, 0, 4, "Plans admitted")
+    table.cell(desk, 1, 4, str.tostring(plansAdmitted))
+    table.cell(desk, 0, 5, "Entry + stop ambiguity")
+    table.cell(desk, 1, 5, str.tostring(ambiguousMinutes), text_color=color.orange)
+    table.cell(desk, 0, 6, "Confirmation history")
+    table.cell(desk, 1, 6, str.tostring(confirmations.n) + " bars")
+    table.cell(desk, 0, 7, "Costs / fill assumptions")
+    table.cell(desk, 1, 7, "Review Strategy Properties")
+    table.cell(desk, 0, 8, "Validation")
+    table.cell(desk, 1, 8, "Draft port · no win-rate claim", text_color=color.orange)

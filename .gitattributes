@@ -1,0 +1,2 @@
+# Keep the documented Pine source fingerprint stable across Windows checkouts.
+*.pine text eol=lf

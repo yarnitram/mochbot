@@ -1,5 +1,7 @@
 # Mochbot
 
+**TradingView research:** [Pine v6 Strategy Lab and testing guide](pine/README.md) covers all eight active models, one selected model per standard 1m chart. [Validation status and known limits](pine/VALIDATION.md); this draft port still needs the user's TradingView compile.
+
 **Limit Desk:** eight selectable strategies: MOD-01E, EMA Pullback, Turtle Soup, Opening Range Breakout Retest, Trend Breakout Retest, UTC VWAP Reclaim, Bollinger Range Reversal, and RSI Divergence. Choose any combination using checkboxes, with recommended starting settings for every strategy. Includes chronological confirmation, a persistent limit ledger, live simulated P&L, adjustable discovery sizes and shared exposure checks. The [five new experimental strategies and starting presets](docs/STRATEGY-PACK.md) have unverified market win rates. See [strategy rules and Proxmox upgrade notes](docs/REBUILD.md). The earlier MOD-01 overview below describes the retained historical implementation.
 
 Alert-only scanner for **MEXC USDT-perpetual futures** that runs **Phantom SMC MOD-01 (Pro-Trend Confirmation)** on a watchlist and notifies you on **Telegram** and **Discord**. A local **dashboard** shows each coin's stage live.
