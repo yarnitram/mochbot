@@ -2,7 +2,7 @@
 
 These are testable strategy hypotheses, not established “high probability” systems. Synthetic tests verify chronology and implementation, not profitability or real fill probability. Indicator education does not validate this combination of rules. Keep the existing MOD-01E default until a strategy is deliberately selected.
 
-Settings → Strategy settings edits each strategy independently. Settings → Strategy selection uses eight checkboxes: choose any nonempty combination, then Save selection. Select all and Clear selection help edit the form; clearing cannot be saved. Apply to existing watchlist copies your combination to current coins; leave it unchecked to affect only new coins. The Market watch selector still supports one-coin overrides and displays saved custom combinations. Existing ALL and BOTH selections remain compatible. Priority follows the displayed catalog order, regardless of click order. Changing a new strategy's settings invalidates its pending plans; active simulated trades retain their levels.
+Settings → Strategy settings edits each strategy independently. Settings → Strategy selection uses eleven checkboxes: choose any nonempty combination, then Save selection. Select all and Clear selection help edit the form; clearing cannot be saved. Apply to existing watchlist copies your combination to current coins; leave it unchecked to affect only new coins. The Market watch selector still supports one-coin overrides and displays saved custom combinations. Existing ALL and BOTH selections remain compatible. Priority follows the displayed catalog order, regardless of click order. Changing a new strategy's settings invalidates its pending plans; active simulated trades retain their levels.
 
 ## Recommended starting settings
 

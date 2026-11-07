@@ -1,8 +1,8 @@
 # Mochbot
 
-**TradingView research:** [Pine v6 Strategy Lab and testing guide](pine/README.md) covers all eight active models, one selected model per standard 1m chart. [Validation status and known limits](pine/VALIDATION.md); this draft port still needs the user's TradingView compile.
+**TradingView research:** [Pine v6 Strategy Lab and testing guide](pine/README.md) covers the original eight models, one selected model per standard 1m chart. Adam & Eve, Head & Shoulders and Quasimodo are currently bot/replay strategies and are not in this Pine port. [Validation status and known limits](pine/VALIDATION.md); this draft port still needs the user's TradingView compile.
 
-**Limit Desk:** eight selectable strategies: MOD-01E, EMA Pullback, Turtle Soup, Opening Range Breakout Retest, Trend Breakout Retest, UTC VWAP Reclaim, Bollinger Range Reversal, and RSI Divergence. Choose any combination using checkboxes, with recommended starting settings for every strategy. Includes chronological confirmation, a persistent limit ledger, live simulated P&L, adjustable discovery sizes and shared exposure checks. The [five new experimental strategies and starting presets](docs/STRATEGY-PACK.md) have unverified market win rates. See [strategy rules and Proxmox upgrade notes](docs/REBUILD.md). The earlier MOD-01 overview below describes the retained historical implementation.
+**Limit Desk:** eleven selectable strategies: MOD-01E, EMA Pullback, Turtle Soup, Opening Range Breakout Retest, Trend Breakout Retest, UTC VWAP Reclaim, Bollinger Range Reversal, RSI Divergence, Adam & Eve, Head & Shoulders, and Quasimodo. Choose any combination using checkboxes, with recommended starting settings for every strategy. Includes chronological confirmation, a persistent limit ledger, live simulated P&L, adjustable discovery sizes and shared exposure checks. Read the [chart-pattern rules](docs/CHART-PATTERNS.md), [replay and research dashboard guide](docs/REPLAY.md), and [five original experimental strategies](docs/STRATEGY-PACK.md). Market win rates remain unverified. See [strategy rules and Proxmox upgrade notes](docs/REBUILD.md). The earlier MOD-01 overview below describes the retained historical implementation.
 
 Alert-only scanner for **MEXC USDT-perpetual futures** that runs **Phantom SMC MOD-01 (Pro-Trend Confirmation)** on a watchlist and notifies you on **Telegram** and **Discord**. A local **dashboard** shows each coin's stage live.
 
@@ -51,7 +51,7 @@ SQLite lives in the `bot-data` volume. Run it in a Docker-capable LXC or VM. Set
 ## Compare with TradingView
 
 ```bash
-npm run replay -- BTC_USDT 1500 off
+npm run replay -- candles.json BTC_USDT ALL report.json
 ```
 
 Prints the POIs and every entry signal for the last 1500 1m bars so you can compare with the Pine strategy on the same 1m chart. Small differences can occur at the start of the window (HTF bars are rebuilt from the supplied 1m history and only POIs created inside it are tracked).

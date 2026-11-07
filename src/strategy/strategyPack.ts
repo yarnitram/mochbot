@@ -1,5 +1,6 @@
 import type { Candle, Direction, PackStrategyId, Setup } from '../types.js';
 import { aggregateClosed, atr, ema } from './indicators.js';
+import {detectChartPattern,isChartPattern} from './chartPatterns.js';
 
 export interface PackCfg {
   timeframePreset: '1H/5m' | '4H/15m';
@@ -23,6 +24,8 @@ export interface PackCfg {
   pivotBars?: number;
   minRsiDivergence?: number;
   confirmationWindowBars?: number;
+  patternToleranceAtr?:number;
+  minPatternAtr?:number;
 }
 
 const common: PackCfg = {timeframePreset:'1H/5m',orderExpiry:6,stopBufferAtr:.2,minStopAtr:.5,
@@ -38,6 +41,9 @@ export const PACK_DEFINITIONS: {id:PackStrategyId;name:string;description:string
     defaults:{...common,minVolumeRatio:1,lookbackBars:20,bandDeviation:2,maxRangeEfficiency:.35,rsiPeriod:14,rrTP1:1,rrTP2:2}},
   {id:'RSI-DIVERGENCE',name:'Confirmed RSI Divergence Reversal',description:'Two confirmed price pivots with regular RSI divergence → neckline close with volume → 50% confirmation-candle limit. Pivots are known only after right-hand candles close.',
     defaults:{...common,lookbackBars:40,rsiPeriod:14,pivotBars:2,minRsiDivergence:5,confirmationWindowBars:6}},
+  ...(['ADAM-EVE','HEAD-SHOULDERS','QUASIMODO'] as const).map(id=>({id,name:({ 'ADAM-EVE':'Adam & Eve Reversal','HEAD-SHOULDERS':'Head & Shoulders Reversal','QUASIMODO':'Quasimodo Structure Reversal'})[id],
+   description:'Confirmed swing-pattern reversal → completed neckline/structure break with volume → resting retest limit. Includes mirrored bullish and bearish setups; experimental Mochbot rules.',
+   defaults:{...common,lookbackBars:80,pivotBars:2,confirmationWindowBars:12,patternToleranceAtr:.75,minPatternAtr:.5,breakoutBufferAtr:.1,maxStopAtr:6}})),
 ];
 export const isPackStrategy = (id:unknown):id is PackStrategyId => PACK_DEFINITIONS.some(d=>d.id===id);
 export const packDefaults = (id:PackStrategyId):PackCfg => ({...PACK_DEFINITIONS.find(d=>d.id===id)!.defaults});
@@ -65,6 +71,8 @@ export function validatePackConfig(id:PackStrategyId,input:Partial<PackCfg>):Pac
   if(cfg.bandDeviation!==undefined&&(cfg.bandDeviation<1||cfg.bandDeviation>4))throw Error('Band deviation must be 1–4');
   if(cfg.maxRangeEfficiency!==undefined&&(cfg.maxRangeEfficiency<=0||cfg.maxRangeEfficiency>1))throw Error('Range efficiency must be above 0 and at most 1');
   if(cfg.minRsiDivergence!==undefined&&(cfg.minRsiDivergence<1||cfg.minRsiDivergence>30))throw Error('RSI divergence must be 1–30');
+  if(cfg.patternToleranceAtr!==undefined&&(cfg.patternToleranceAtr<=0||cfg.patternToleranceAtr>5))throw Error('Pattern tolerance must be above 0 and at most 5 ATR');
+  if(cfg.minPatternAtr!==undefined&&(cfg.minPatternAtr<=0||cfg.minPatternAtr>5))throw Error('Pattern prominence must be above 0 and at most 5 ATR');
   if(id==='OPENING-RANGE'&&(cfg.openingRangeMinutes!%15!==0||cfg.sessionWindowMinutes!<=cfg.openingRangeMinutes!||
     cfg.sessionStartHourUTC!*60+cfg.sessionWindowMinutes!>1440))throw Error('UTC session must fit within one day; opening range must use 15-minute increments');
   return cfg;
@@ -163,7 +171,15 @@ export function evaluatePackStrategy(id:PackStrategyId,symbol:string,closed:Cand
       if(['OPENING-RANGE','BREAKOUT-RETEST','VWAP-RECLAIM'].includes(id)&&trend!==pending.direction)finish('INVALIDATED',time);
       else continue;
     }
-    if(id==='OPENING-RANGE'||id==='BREAKOUT-RETEST') {
+    if(isChartPattern(id)) {
+      reason='Waiting for confirmed swing pattern, completed structure break and relative volume';
+      const pattern=detectChartPattern(id,bars,i,a,cfg);
+      if(pattern&&!used.has(pattern.key)){
+        used.add(pattern.key);
+        if(volumeOK)candidate=pattern;
+        else reason='Pattern break rejected: confirmation volume below threshold';
+      }
+    } else if(id==='OPENING-RANGE'||id==='BREAKOUT-RETEST') {
       const orb=id==='OPENING-RANGE',start=day+(cfg.sessionStartHourUTC??0)*3600;
       const rangeEnd=start+(cfg.openingRangeMinutes??0)*60,deadline=start+(cfg.sessionWindowMinutes??0)*60;
       let range:Candle[]=[];

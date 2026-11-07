@@ -11,8 +11,8 @@ import {Db} from '../src/db/index.js';
 import {loadConfig} from '../src/config.js';
 
 describe('arbitrary strategy combinations and starting presets',()=>{
- it('round-trips all 255 nonempty combinations in deterministic priority order',()=>{
-  for(let bits=1;bits<256;bits++){
+ it('round-trips every nonempty combination in deterministic priority order',()=>{
+  for(let bits=1;bits<2**ACTIVE_STRATEGIES.length;bits++){
    const ids=ACTIVE_STRATEGIES.filter((_,i)=>bits&(1<<i));
    const selection=encodeStrategies([...ids].reverse());
    expect(isStrategySelection(selection)).toBe(true);expect(resolveStrategies(selection)).toEqual(ids);

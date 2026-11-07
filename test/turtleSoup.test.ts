@@ -1,6 +1,6 @@
 import {describe,it,expect,vi} from 'vitest';
 import {evaluateTurtleSoup,validateTurtleConfig} from '../src/strategy/turtleSoup.js';
-import {DEFAULT_TURTLE_CFG} from '../src/types.js';
+import {DEFAULT_TURTLE_CFG,ACTIVE_STRATEGIES} from '../src/types.js';
 import {turtleScenario,T0} from './fixtures.js';
 import {Db} from '../src/db/index.js';
 import {Runner} from '../src/engine/runner.js';
@@ -77,7 +77,7 @@ describe('intraday Turtle Soup-inspired reversal',()=>{
   const runner=new Runner({cfg:loadConfig({PAPER_MODE:'true',DB_PATH:':memory:'}),db,feed:{subscribe(){},unsubscribe(){}},
    fetchKlines:async(_s,_n,interval)=>interval==='Min60'?f.history:interval==='Hour4'?[]:f.candles.slice(0,75),fetchContracts:async()=>[],notifiers:[],log:()=>{}});
   try{
-   await runner.start();expect(runner.strategyStates.get('X_USDT')?.size).toBe(8);
+   await runner.start();expect(runner.strategyStates.get('X_USDT')?.size).toBe(ACTIVE_STRATEGIES.length);
    expect(runner.strategyStates.get('X_USDT')?.get('TURTLE-SOUP')?.stage).toBe('ARMED');
    expect(db.listPendingLimitOrders()).toHaveLength(1);
    for(const c of f.candles.slice(75)){clock.mockReturnValue((c.t+60)*1000);runner.onKline('X_USDT',c)}

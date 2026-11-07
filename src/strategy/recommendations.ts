@@ -2,6 +2,9 @@ import {DEFAULT_MOD01E_CFG,DEFAULT_EMA_CFG,DEFAULT_TURTLE_CFG,type ActiveStrateg
 import {packDefaults} from './strategyPack.js';
 
 const PACK_TIPS:Record<PackStrategyId,string>={
+  'ADAM-EVE':'Confirmed narrow Adam then broad Eve turn; neckline close with volume; neckline retest limit and stop beyond both turns. Shape tolerance 0.75 ATR; 2R / 3R targets.',
+  'HEAD-SHOULDERS':'Confirmed left shoulder, head and right shoulder; close through the sloping neckline with volume; frozen-neckline retest limit and stop beyond head. Includes inverse patterns; 2R / 3R targets.',
+  'QUASIMODO':'Prior swing then new extreme and completed break of intervening structure; limit at the earlier swing (QML), stop beyond the new extreme; 2R / 3R targets. This is the Mochbot QML adaptation.',
   'OPENING-RANGE':'UTC session starts 13:00 (21:00 UTC+8); opening range 30 minutes; session lasts 180 minutes. Volume ≥1.2× average; retest within six bars; 2R / 3R targets. This fixed UTC session does not shift with daylight saving.',
   'BREAKOUT-RETEST':'Use the prior 20 confirmation bars, volume ≥1.2× average, 0.1 ATR breakout buffer and a six-bar retest window; 2R / 3R targets.',
   'VWAP-RECLAIM':'Use the complete UTC daily VWAP session from 00:00, volume ≥1.2× average, and 2R / 3R targets. Orders expire no later than UTC midnight.',
@@ -9,7 +12,7 @@ const PACK_TIPS:Record<PackStrategyId,string>={
   'RSI-DIVERGENCE':'Use RSI14, two bars on each side of a confirmed pivot, ≥5 RSI-point divergence, 40-bar pivot lookback, six-bar neckline deadline and volume ≥1.2× average; 2R / 3R targets.'
 };
 function packRecommendation(id:PackStrategyId){return {
-  summary:'Start with 4H context / 15m confirmation; six-bar (90-minute) expiry, 0.2 ATR stop buffer, 0.5–3 ATR stop distance and minimum 0.15% price distance. '+PACK_TIPS[id],
+  summary:`Start with 4H context / 15m confirmation; six-bar (90-minute) expiry, 0.2 ATR stop buffer, 0.5–${packDefaults(id).maxStopAtr} ATR stop distance and minimum 0.15% price distance. `+PACK_TIPS[id],
   config:{...packDefaults(id),timeframePreset:'4H/15m'}
 }}
 
@@ -23,4 +26,7 @@ export const STRATEGY_RECOMMENDATIONS:Record<ActiveStrategyId,{summary:string;co
   'VWAP-RECLAIM':packRecommendation('VWAP-RECLAIM'),
   'BOLLINGER-RANGE':packRecommendation('BOLLINGER-RANGE'),
   'RSI-DIVERGENCE':packRecommendation('RSI-DIVERGENCE'),
+  'ADAM-EVE':packRecommendation('ADAM-EVE'),
+  'HEAD-SHOULDERS':packRecommendation('HEAD-SHOULDERS'),
+  'QUASIMODO':packRecommendation('QUASIMODO'),
 };

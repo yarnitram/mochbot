@@ -12,9 +12,9 @@ const input=(name:string)=>{
 };
 // A cross-language settings contract: changing TS defaults must not silently leave Pine behind.
 describe('Pine port settings contract (not a Pine compiler or strategy-performance test)',()=>{
- it('exposes every active model in the selector and uses standard 1m execution',()=>{
+ it('keeps the original eight-model Pine port explicit and uses standard 1m execution',()=>{
   const models=source.match(/string model = input\.string\([^\n]*options=(\[[^\]]+\])/);
-  expect(JSON.parse(models![1])).toEqual(ACTIVE_STRATEGIES);
+  expect(JSON.parse(models![1])).toEqual(ACTIVE_STRATEGIES.filter(id=>!['ADAM-EVE','HEAD-SHOULDERS','QUASIMODO'].includes(id)));
   expect(source.startsWith('//@version=6')).toBe(true);
   expect(source).toContain('timeframe.multiplier != 1');
   expect(source).toContain('not chart.is_standard');

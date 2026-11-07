@@ -12,9 +12,9 @@ export type Stage = 'IDLE' | 'WATCH' | 'ARMED' | 'ENTRY_READY';
 export type Direction = 'LONG' | 'SHORT';
 export type Sensitivity = 'strict' | 'balanced' | 'sensitive';
 export type OrderType = 'MARKET' | 'LIMIT' | 'TRIGGER_LIMIT';
-export type PackStrategyId = 'OPENING-RANGE' | 'BREAKOUT-RETEST' | 'VWAP-RECLAIM' | 'BOLLINGER-RANGE' | 'RSI-DIVERGENCE';
+export type PackStrategyId = 'OPENING-RANGE' | 'BREAKOUT-RETEST' | 'VWAP-RECLAIM' | 'BOLLINGER-RANGE' | 'RSI-DIVERGENCE' | 'ADAM-EVE' | 'HEAD-SHOULDERS' | 'QUASIMODO';
 export type ActiveStrategyId = 'MOD-01E' | 'EMA-PULLBACK' | 'TURTLE-SOUP' | PackStrategyId;
-export const ACTIVE_STRATEGIES: ActiveStrategyId[] = ['MOD-01E','EMA-PULLBACK','TURTLE-SOUP','OPENING-RANGE','BREAKOUT-RETEST','VWAP-RECLAIM','BOLLINGER-RANGE','RSI-DIVERGENCE'];
+export const ACTIVE_STRATEGIES: ActiveStrategyId[] = ['MOD-01E','EMA-PULLBACK','TURTLE-SOUP','OPENING-RANGE','BREAKOUT-RETEST','VWAP-RECLAIM','BOLLINGER-RANGE','RSI-DIVERGENCE','ADAM-EVE','HEAD-SHOULDERS','QUASIMODO'];
 export const isActiveStrategy = (id: unknown): id is ActiveStrategyId => ACTIVE_STRATEGIES.includes(id as ActiveStrategyId);
 export const isStrategySelection = (id: unknown): id is StrategySelection => {
   if(isActiveStrategy(id)||id==='BOTH'||id==='ALL')return true;

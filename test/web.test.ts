@@ -101,7 +101,7 @@ describe('Limit Desk HTTP integration',()=>{
    expect(runner.turtleCfg().lookbackBars).toBe(25);expect(runner.turtleCfg().timeframePreset).toBe('4H/15m');
    expect((await fetch(url+'/api/strategies/TURTLE-SOUP/settings',{method:'POST',headers,body:JSON.stringify({lookbackBars:0})})).status).toBe(400);
    expect((await fetch(url+'/api/strategies/settings',{method:'POST',headers,body:JSON.stringify({globalStrategy:'ALL',applyToWatchlist:true})})).status).toBe(200);
-   expect(db.getGlobalStrategy()).toBe('ALL');expect(runner.strategyStates.get('BTC_USDT')?.size).toBe(8);
+   expect(db.getGlobalStrategy()).toBe('ALL');expect(runner.strategyStates.get('BTC_USDT')?.size).toBe(ACTIVE_STRATEGIES.length);
    expect((await fetch(url+'/api/watchlist/BTC_USDT',{method:'PATCH',headers,body:JSON.stringify({strategy:'TURTLE-SOUP'})})).status).toBe(200);
    expect(db.listWatch()[0].strategy).toBe('TURTLE-SOUP');
    for(const d of PACK_DEFINITIONS){

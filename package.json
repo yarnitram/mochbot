@@ -13,7 +13,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "replay": "tsx scripts/replay.ts",
-    "preview": "tsx scripts/preview.ts"
+    "preview": "tsx scripts/preview.ts",
+    "replay:download": "tsx scripts/downloadReplay.ts"
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",

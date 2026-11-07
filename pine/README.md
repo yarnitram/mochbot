@@ -1,6 +1,6 @@
 # Mochbot Pine v6 Strategy Lab
 
-[Open the script](mochbot_strategy_lab.pine). This is one self-contained TradingView `strategy()` with eight selectable models. Runtime source baseline: Mochbot `e0cec1cdf74b7231c19f50c72868232449a517de`. The lab adds research files without changing the production scanner.
+[Open the script](mochbot_strategy_lab.pine). This is one self-contained TradingView `strategy()` with eight selectable models. The bot now also supports Adam & Eve, Head & Shoulders and Quasimodo; those three models are not yet part of this Pine file. Runtime source baseline: Mochbot `e0cec1cdf74b7231c19f50c72868232449a517de`. The lab adds research files without changing the production scanner.
 
 ## Use it on TradingView
 

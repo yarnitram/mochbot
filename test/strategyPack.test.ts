@@ -7,7 +7,7 @@ import {Runner} from '../src/engine/runner.js';
 import {loadConfig} from '../src/config.js';
 import {formatAlert} from '../src/notify/format.js';
 
-const ids=PACK_DEFINITIONS.map(d=>d.id);
+const ids=PACK_DEFINITIONS.map(d=>d.id).filter(id=>!['ADAM-EVE','HEAD-SHOULDERS','QUASIMODO'].includes(id));
 const invert=(b:Candle):Candle=>({...b,o:200-b.o,c:200-b.c,h:200-b.l,l:200-b.h});
 describe('five experimental strategy rule sets',()=>{
  for(const id of ids) {
