@@ -89,6 +89,33 @@ async function loadSettings(){strategyCatalog=(await api('/api/strategies')).str
  $('scanner-fields').innerHTML=feeds.map(([k,label,p,limit])=>field(k,!!state[p],label)+`<label>Top N ${esc(label.toLowerCase())}<input name="${limit}" type="number" min="1" max="500" step="1" value="${state.discoveryLimits[limit]}" required></label>`).join('')+field('ultra_lev_scanner',!!state.ultraLevScanner,'High leverage contracts (all matching 200×+)')+field('max_active_coins',state.maxActiveCoins,'Combined discovery coin cap')+field('min_leverage',state.minLeverage,'Minimum leverage')+field('min_gainer_volume',state.minGainerVolume,'Minimum gainers/losers volume')+'<p class="muted">Each category supports 1–500 pairs, subject to available MEXC contracts. Duplicate pairs count once. Saved combined caps are preserved; raise this cap to include more pairs. High-leverage mode currently restricts all selected feeds to 200×+ contracts. Shared trade-risk limits remain separate.</p>';
  $('risk-form').elements.account_capital.value=state.performance.accountCapital;$('risk-form').elements.risk_per_trade.value=state.performance.riskPerTrade;$('risk-form').elements.muted.checked=state.muted;
  $('risk-form').elements.max_open_risk.value=state.maxOpenRisk;
+ await Promise.all([loadMochexSettings(),loadDiscordSettings()]);
+}
+async function loadMochexSettings(){
+ try{
+  const c=await api('/api/mochex/config');
+  $('mochex-enabled').checked=!!c.enabled;
+  $('mochex-notify').checked=!!c.notify;
+  $('mochex-url').value=c.apiUrl||'https://staging.ymatt.online/api/trades/webhook';
+  $('mochex-key').value=c.hasKey?(c.apiKey||'******'):'';
+  $('mochex-status').textContent=c.hasKey?(c.enabled?'● Ready & Enabled':'○ Disabled'):'No API key set';
+  $('mochex-status').style.color=c.hasKey&&c.enabled?'var(--mint)':'var(--muted)';
+ }catch(e){
+  $('mochex-status').textContent='Load error';
+  $('mochex-status').style.color='#ff9292';
+ }
+}
+async function loadDiscordSettings(){
+ try{
+  const c=await api('/api/discord/config');
+  $('discord-enabled').checked=!!c.enabled;
+  $('discord-url').value=c.webhookUrl||'';
+  $('discord-status').textContent=c.hasWebhook?(c.enabled?'● Ready & Enabled':'○ Disabled'):'No webhook URL set';
+  $('discord-status').style.color=c.hasWebhook&&c.enabled?'var(--mint)':'var(--muted)';
+ }catch(e){
+  $('discord-status').textContent='Load error';
+  $('discord-status').style.color='#ff9292';
+ }
 }
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>action(async()=>{activeTab=b.dataset.tab;document.querySelectorAll('.view').forEach(v=>v.hidden=v.id!==activeTab);document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('selected',x===b));if(activeTab==='settings')await loadSettings();if(activeTab==='trades')await loadTrades()}));
 $('search').oninput=render;$('stage').onchange=render;$('strategy-filter').onchange=render;$('refresh').onclick=()=>action(refresh,$('refresh'));$('edit-strategy').onchange=renderStrategyEditor;
@@ -105,6 +132,59 @@ $('selection-form').onsubmit=e=>{e.preventDefault();action(async()=>{
 },e.submitter)};
 $('coins').onchange=e=>{const el=e.target.closest('[data-coin-strategy]');if(el)action(async()=>{const r=await fetch(`/api/watchlist/${encodeURIComponent(el.dataset.coinStrategy)}`,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({strategy:el.value})});if(!r.ok)throw Error((await r.json()).error||'Strategy update failed');await refresh()},el)};
 for(const id of ['scanner-form','risk-form'])$(id).onsubmit=e=>{e.preventDefault();action(async()=>{const body={};for(const el of e.target.elements)if(el.name)body[el.name]=el.type==='checkbox'?el.checked:Number(el.value);await api('/api/settings',body);await refresh()},e.submitter)};
+$('mochex-form').onsubmit=e=>{e.preventDefault();action(async()=>{
+ const body={
+  enabled:$('mochex-enabled').checked,
+  notify:$('mochex-notify').checked,
+  apiUrl:$('mochex-url').value.trim(),
+  apiKey:$('mochex-key').value.trim(),
+ };
+ await api('/api/mochex/config',body);
+ $('mochex-status').textContent='Saved successfully';
+ $('mochex-status').style.color='var(--mint)';
+ await loadMochexSettings();
+},$('save-mochex-btn'))};
+$('test-mochex-btn').onclick=()=>action(async()=>{
+ $('mochex-status').textContent='Testing connection…';
+ $('mochex-status').style.color='var(--muted)';
+ const body={
+  apiUrl:$('mochex-url').value.trim(),
+  apiKey:$('mochex-key').value.trim(),
+ };
+ const res=await api('/api/mochex/test',body);
+ if(res.ok){
+  $('mochex-status').textContent=`Connected! (Active trades: ${res.active_count??0})`;
+  $('mochex-status').style.color='var(--mint)';
+ }else{
+  $('mochex-status').textContent=`Connection failed: ${res.error||'Check URL/key'}`;
+  $('mochex-status').style.color='#ff9292';
+ }
+},$('test-mochex-btn'));
+$('discord-form').onsubmit=e=>{e.preventDefault();action(async()=>{
+ const body={
+  enabled:$('discord-enabled').checked,
+  webhookUrl:$('discord-url').value.trim(),
+ };
+ await api('/api/discord/config',body);
+ $('discord-status').textContent='Saved successfully';
+ $('discord-status').style.color='var(--mint)';
+ await loadDiscordSettings();
+},$('save-discord-btn'))};
+$('test-discord-btn').onclick=()=>action(async()=>{
+ $('discord-status').textContent='Testing webhook…';
+ $('discord-status').style.color='var(--muted)';
+ const body={
+  webhookUrl:$('discord-url').value.trim(),
+ };
+ const res=await api('/api/discord/test',body);
+ if(res.ok){
+  $('discord-status').textContent='Webhook test delivered successfully!';
+  $('discord-status').style.color='var(--mint)';
+ }else{
+  $('discord-status').textContent=`Test failed: ${res.error||'Check URL'}`;
+  $('discord-status').style.color='#ff9292';
+ }
+},$('test-discord-btn'));
 function showChart(e){const b=e.target.closest('[data-chart]');if(b){$('chart-image').src=b.dataset.chart;$('chart-dialog').showModal()}}
 $('trade-rows').onclick=showChart;
 $('live-rows').onclick=e=>{

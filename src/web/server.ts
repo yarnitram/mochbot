@@ -13,6 +13,7 @@ import { ACTIVE_STRATEGIES,isActiveStrategy,isStrategySelection,resolveStrategie
 import {STRATEGY_RECOMMENDATIONS} from '../strategy/recommendations.js';
 import {PACK_DEFINITIONS,isPackStrategy,validatePackConfig} from '../strategy/strategyPack.js';
 import { DISCOVERY_DEFAULTS,validDiscoveryCount,type DiscoveryLimitKey } from '../discovery.js';
+import { DiscordNotifier } from '../notify/discord.js';
 const validSelection=isStrategySelection;
 
 const MIME: Record<string, string> = {
@@ -109,7 +110,11 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
     minLeverage: runner.minLeverage,
     globalStrategy: db.getGlobalStrategy(),
     globalStrategies: resolveStrategies(db.getGlobalStrategy()),
-    channels: { telegram: !!cfg.telegramToken, discord: !!cfg.discordWebhook },
+    channels: {
+      telegram: !!cfg.telegramToken,
+      discord: db.getDiscordConfig(cfg.discordWebhook).enabled && !!db.getDiscordConfig(cfg.discordWebhook).webhookUrl,
+      mochex: runner.mochex.getConfig().enabled && !!runner.mochex.getConfig().apiKey,
+    },
     performance: db.getPerformanceSummary(),
     activeTrades: db.getActiveTrades().map(t => {
       const state = runner.states.get(t.symbol);
@@ -386,6 +391,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
           notify: typeof b.notify === 'boolean' ? b.notify : undefined,
         });
         const updated = runner.mochex.getConfig();
+        push('state_full', snapshot());
         const maskedKey = updated.apiKey ? (updated.apiKey.length > 8 ? `${updated.apiKey.slice(0, 6)}...${updated.apiKey.slice(-4)}` : '******') : null;
         return json(res, 200, {
           ok: true,
@@ -405,6 +411,45 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
           testKey = db.getMochexConfig(cfg.mochex).apiKey ?? undefined;
         }
         const result = await runner.mochex.testConnection(testUrl, testKey);
+        return json(res, 200, result);
+      }
+
+      // Discord Webhook API
+      if (path === '/api/discord/config' && req.method === 'GET') {
+        const c = db.getDiscordConfig(cfg.discordWebhook);
+        return json(res, 200, {
+          webhookUrl: c.webhookUrl || '',
+          hasWebhook: !!c.webhookUrl,
+          enabled: c.enabled,
+        });
+      }
+
+      if (path === '/api/discord/config' && req.method === 'POST') {
+        const b = await readBody(req);
+        db.setDiscordConfig({
+          webhookUrl: typeof b.webhookUrl === 'string' ? b.webhookUrl.trim() : undefined,
+          enabled: typeof b.enabled === 'boolean' ? b.enabled : undefined,
+        });
+        const updated = db.getDiscordConfig(cfg.discordWebhook);
+        push('state_full', snapshot());
+        return json(res, 200, {
+          ok: true,
+          webhookUrl: updated.webhookUrl || '',
+          hasWebhook: !!updated.webhookUrl,
+          enabled: updated.enabled,
+        });
+      }
+
+      if (path === '/api/discord/test' && req.method === 'POST') {
+        const b = await readBody(req);
+        let testUrl = typeof b.webhookUrl === 'string' && b.webhookUrl.trim() ? b.webhookUrl.trim() : undefined;
+        if (!testUrl || testUrl.includes('...')) {
+          testUrl = db.getDiscordConfig(cfg.discordWebhook).webhookUrl ?? undefined;
+        }
+        if (!testUrl) {
+          return json(res, 200, { ok: false, error: 'No Discord webhook URL configured' });
+        }
+        const result = await DiscordNotifier.testWebhook(testUrl);
         return json(res, 200, result);
       }
 

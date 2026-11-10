@@ -91,6 +91,11 @@ export interface CoinStats {
 // loaded via require so bundlers/test runners that do not know node:sqlite do not choke on it
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite');
 
+export interface DiscordConfig {
+  webhookUrl: string | null;
+  enabled: boolean;
+}
+
 export class Db {
   private db: DatabaseSyncT;
 
@@ -681,4 +686,18 @@ export class Db {
     if (cfg.notify !== undefined) this.setSetting('mochex_notify', cfg.notify ? '1' : '0');
   }
 
+  getDiscordConfig(defaultWebhook: string | null = null): DiscordConfig {
+    const url = this.getSetting('discord_webhook_url');
+    const enabled = this.getSetting('discord_enabled');
+    const effectiveUrl = url !== null ? (url || null) : defaultWebhook;
+    return {
+      webhookUrl: effectiveUrl,
+      enabled: enabled !== null ? enabled === '1' : Boolean(effectiveUrl),
+    };
+  }
+
+  setDiscordConfig(cfg: Partial<DiscordConfig>): void {
+    if (cfg.webhookUrl !== undefined) this.setSetting('discord_webhook_url', cfg.webhookUrl || '');
+    if (cfg.enabled !== undefined) this.setSetting('discord_enabled', cfg.enabled ? '1' : '0');
+  }
 }

@@ -19,7 +19,11 @@ if (cfg.telegramToken && cfg.telegramChatId) {
   telegram = new TelegramNotifier(cfg.telegramToken, cfg.telegramChatId);
   notifiers.push(telegram);
 }
-if (cfg.discordWebhook) notifiers.push(new DiscordNotifier(cfg.discordWebhook));
+const discord = new DiscordNotifier(
+  () => db.getDiscordConfig(cfg.discordWebhook).webhookUrl,
+  () => db.getDiscordConfig(cfg.discordWebhook).enabled,
+);
+notifiers.push(discord);
 
 const runner = new Runner({
   cfg,
