@@ -108,6 +108,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
     maxActiveCoins: runner.maxActiveCoins,
     discoveryLimits:runner.discoveryLimits,
     minLeverage: runner.minLeverage,
+    alwaysMaxLeverage: db.getAlwaysMaxLeverage(),
     globalStrategy: db.getGlobalStrategy(),
     globalStrategies: resolveStrategies(db.getGlobalStrategy()),
     channels: {
@@ -469,6 +470,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
         if (typeof b.min_leverage === 'number' && b.min_leverage >= 1) runner.setMinLeverage(b.min_leverage);
         if (validSelection(b.global_strategy)) db.setGlobalStrategy(b.global_strategy);
         if(b.max_open_risk!==undefined)db.setSetting('max_open_risk',String(b.max_open_risk));
+        if (typeof b.always_max_leverage === 'boolean') db.setAlwaysMaxLeverage(b.always_max_leverage);
         if (typeof b.account_capital === 'number' && b.account_capital > 0) db.setAccountCapital(b.account_capital);
         if (typeof b.default_margin === 'number' && b.default_margin > 0) db.setDefaultMargin(b.default_margin);
         if (typeof b.risk_per_trade === 'number' && b.risk_per_trade > 0) db.setRiskPerTrade(b.risk_per_trade);
@@ -476,7 +478,7 @@ export function startWeb(runner: Runner, db: Db, cfg: AppConfig, webDir: string)
           runner.ensureAutoScanTimer();
           await runner.runAutoScan();
         }
-        if (typeof b.killzone === 'boolean' || b.account_capital !== undefined || b.risk_per_trade !== undefined || b.max_open_risk!==undefined) runner.reEvaluateAll();
+        if (typeof b.killzone === 'boolean' || b.account_capital !== undefined || b.risk_per_trade !== undefined || b.max_open_risk!==undefined || b.always_max_leverage !== undefined) runner.reEvaluateAll();
         push('state_full', snapshot());
         return json(res, 200, snapshot());
       }

@@ -9,7 +9,8 @@ export function computePositionSizing(
   capital: number = 1000,
   riskPerTrade: number = 5,
   maxLeverage: number = 50,
-  contractSize: number = 1
+  contractSize: number = 1,
+  alwaysMaxLeverage: boolean = false,
 ): PositionSizing {
   if (![entry,sl,tp1,tp2,capital,riskPerTrade,maxLeverage,contractSize].every(Number.isFinite) ||
       entry <= 0 || sl <= 0 || entry === sl || capital <= 0 || riskPerTrade <= 0 || maxLeverage < 1 || contractSize <= 0 ||
@@ -21,7 +22,9 @@ export function computePositionSizing(
 
   // Heuristic leverage cap, not an exchange liquidation guarantee.
   const maxSafeLeverage = Math.max(1, Math.floor(0.85 / slDistPct));
-  const leverage = Math.max(1, Math.min(Math.floor(maxLeverage), maxSafeLeverage));
+  const leverage = alwaysMaxLeverage
+    ? Math.max(1, Math.floor(maxLeverage))
+    : Math.max(1, Math.min(Math.floor(maxLeverage), maxSafeLeverage));
 
   // Risk per trade: loss from entry to SL = notional * slDistPct = targetRisk
   // => notional = targetRisk / slDistPct

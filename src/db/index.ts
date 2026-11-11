@@ -358,6 +358,14 @@ export class Db {
     this.setSetting('default_margin', String(Math.max(0.1, val)));
   }
 
+  getAlwaysMaxLeverage(): boolean {
+    return this.getSetting('always_max_leverage') === '1';
+  }
+
+  setAlwaysMaxLeverage(val: boolean): void {
+    this.setSetting('always_max_leverage', val ? '1' : '0');
+  }
+
   getGlobalStrategy(): StrategySelection {
     const value=this.getSetting('global_strategy');
     return isStrategySelection(value)?value:'MOD-01E';

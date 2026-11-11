@@ -630,7 +630,8 @@ export class Runner extends EventEmitter {
       const riskPerTrade = this.d.db.getRiskPerTrade();
       const maxLev = contract?.maxLeverage ?? 50;
       const cSize = contract?.contractSize ?? 1;
-      return computePositionSizing(setup.entry, setup.sl, setup.tp1, setup.tp2, setup.direction, capital, riskPerTrade, maxLev, cSize);
+      const alwaysMax = this.d.db.getAlwaysMaxLeverage();
+      return computePositionSizing(setup.entry, setup.sl, setup.tp1, setup.tp2, setup.direction, capital, riskPerTrade, maxLev, cSize, alwaysMax);
     }
     return null;
   }

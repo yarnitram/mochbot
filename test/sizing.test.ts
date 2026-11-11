@@ -14,6 +14,16 @@ describe('risk-aligned pending limit sizing',()=>{
   expect(Math.abs(s.slRiskUsd)).toBeLessThanOrEqual(5);
   expect(Math.abs(s.slRiskUsd)).toBeGreaterThan(4.99);
  });
+ it('uses full contract max leverage when alwaysMaxLeverage is enabled', () => {
+  const clamped = computePositionSizing(100, 95, 115, 125, 'LONG', 1000, 5, 200, 0.01, false);
+  expect(clamped.leverage).toBe(17);
+  expect(clamped.margin).toBe(5.8823);
+
+  const maxed = computePositionSizing(100, 95, 115, 125, 'LONG', 1000, 5, 200, 0.01, true);
+  expect(maxed.leverage).toBe(200);
+  expect(maxed.margin).toBe(0.5);
+  expect(Math.abs(maxed.slRiskUsd)).toBeCloseTo(5, 2);
+ });
  it('uses more margin at lower contract leverage without increasing stop-loss risk',()=>{
   const low=computePositionSizing(100,99,103,105,'LONG',1000,5,5);
   const high=computePositionSizing(100,99,103,105,'LONG',1000,5,50);
